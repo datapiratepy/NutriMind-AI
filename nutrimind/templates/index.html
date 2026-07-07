@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}Home{% endblock %}
+{% block page %}
+<div class="row g-4">
+  <div class="col-12">
+    <div class="nm-card p-4 p-lg-5">
+      <span class="nm-kicker">IBM SkillsBuild · AI Nutrition Assistant</span>
+      <h1 class="mt-2 mb-2" style="font-weight:700">Nutrition guidance from a
+        <span style="color:var(--nm-accent)">team of AI agents</span> — not a chatbot.</h1>
+      <p class="text-2 mb-4" style="max-width:46rem">
+        NutriMind routes every request to a specialized agent, grounds factual answers in
+        your nutrition documents with citations, and keeps every calculation — calories,
+        BMI, macros, health score — deterministic. Powered by IBM watsonx.ai and Granite.
+      </p>
+      <div class="d-flex flex-wrap gap-2 mb-4">
+        <a href="/chat" class="btn btn-primary"><i class="bi bi-chat-square-text me-1"></i> Start chatting</a>
+        <a href="/profile" class="btn btn-outline-secondary"><i class="bi bi-person-circle me-1"></i> Set up profile</a>
+        <a href="/about" class="btn btn-outline-secondary"><i class="bi bi-diagram-3 me-1"></i> How it works</a>
+      </div>
+      <div class="nm-kicker mb-2">Try a sample prompt</div>
+      {% include "partials/sample_prompts.html" %}
+    </div>
+  </div>
+
+  <div class="col-md-6 col-xl-3">
+    <div class="nm-card p-3 h-100">
+      <div class="d-flex gap-2 align-items-center mb-1">
+        <i class="bi bi-signpost-split fs-5" style="color:var(--nm-accent)"></i>
+        <strong>Agentic routing</strong></div>
+      <span class="text-2">A Coordinator explains why each request goes to the
+        Knowledge, Planner, Analyzer or Advisor agent — rules first, IBM Granite
+        only when needed.</span>
+    </div>
+  </div>
+  <div class="col-md-6 col-xl-3">
+    <div class="nm-card p-3 h-100">
+      <div class="d-flex gap-2 align-items-center mb-1">
+        <i class="bi bi-patch-check fs-5" style="color:var(--nm-green)"></i>
+        <strong>Grounded answers</strong></div>
+      <span class="text-2">RAG over your uploaded PDFs with page-level citations.
+        When retrieval isn't confident, answers are honestly labeled as general
+        knowledge.</span>
+    </div>
+  </div>
+  <div class="col-md-6 col-xl-3">
+    <div class="nm-card p-3 h-100">
+      <div class="d-flex gap-2 align-items-center mb-1">
+        <i class="bi bi-calculator fs-5" style="color:var(--nm-amber)"></i>
+        <strong>Deterministic math</strong></div>
+      <span class="text-2">BMR, targets, meal macros and the health score come from
+        Python and a curated food table — the LLM never invents numbers.</span>
+    </div>
+  </div>
+  <div class="col-md-6 col-xl-3">
+    <div class="nm-card p-3 h-100">
+      <div class="d-flex gap-2 align-items-center mb-1">
+        <i class="bi bi-cloud-check fs-5" style="color:var(--nm-accent)"></i>
+        <strong>IBM watsonx.ai</strong></div>
+      <span class="text-2">Granite models via the official SDK, with a deterministic
+        demo mode so the app runs even without credentials.</span>
+    </div>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="nm-card">
+      <div class="card-header px-3 py-2">Recent activity</div>
+      <div class="p-3" id="home-activity"><div class="nm-skeleton mb-2"></div>
+        <div class="nm-skeleton mb-2" style="width:70%"></div>
+        <div class="nm-skeleton" style="width:50%"></div></div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="nm-card">
+      <div class="card-header px-3 py-2">Quick actions</div>
+      <div class="p-3 d-grid gap-2">
+        <a class="btn btn-outline-secondary text-start" href="/analyzer">
+          <i class="bi bi-clipboard-data me-2"></i>Analyze what I ate today</a>
+        <a class="btn btn-outline-secondary text-start" href="/planner">
+          <i class="bi bi-calendar-week me-2"></i>Generate a meal plan</a>
+        <a class="btn btn-outline-secondary text-start" href="/knowledge">
+          <i class="bi bi-journal-bookmark me-2"></i>Upload nutrition PDFs</a>
+        <button class="btn btn-outline-secondary text-start" id="home-water">
+          <i class="bi bi-droplet me-2"></i>Log a glass of water</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(async function () {
+  const el = document.getElementById("home-activity");
+  try {
+    const [dash, sessions] = await Promise.all([
+      NM.api("/api/dashboard/summary"),
+      NM.api("/api/chat/sessions").catch(() => ({ sessions: [] })),
+    ]);
+    const rows = [];
+    if (!dash.profile_exists) {
+      rows.push(`<div class="nm-empty py-3"><i class="bi bi-person-plus"></i>
+        No profile yet — <a href="/profile">set yours up</a> to unlock
+        personalized plans, BMI tracking and the health score.</div>`);
+    } else {
+      rows.push(`<div class="d-flex justify-content-between py-1">
+        <span>Today's calories</span><strong>${Math.round(dash.today.calories)}
+        ${dash.targets ? " / " + dash.targets.calories : ""} kcal</strong></div>`);
+      rows.push(`<div class="d-flex justify-content-between py-1">
+        <span>Health score (7 days)</span><strong>${dash.health_score.total}/100</strong></div>`);
+      rows.push(`<div class="d-flex justify-content-between py-1">
+        <span>Water today</span><strong>${dash.today.water_glasses} glasses</strong></div>`);
+    }
+    (sessions.sessions || []).slice(0, 3).forEach((s) => {
+      rows.push(`<div class="d-flex justify-content-between py-1 border-top pt-2">
+        <span class="text-truncate me-2"><i class="bi bi-chat-left-text me-1 text-2"></i>
+        ${NM.esc(s.preview)}</span>
+        <span class="text-2 flex-shrink-0">${NM.timeAgo(s.last_at)}</span></div>`);
+    });
+    el.innerHTML = rows.join("");
+  } catch (e) {
+    el.innerHTML = `<div class="nm-empty py-3">Could not load activity.</div>`;
+  }
+  document.getElementById("home-water").addEventListener("click", async () => {
+    try {
+      const r = await NM.api("/api/water", { method: "POST", json: { glasses: 1 } });
+      NM.toast(`Water logged — ${r.water.glasses} glasses today`, "success");
+    } catch (e) { NM.toast(e.message, "error"); }
+  });
+})();
+</script>
+{% endblock %}

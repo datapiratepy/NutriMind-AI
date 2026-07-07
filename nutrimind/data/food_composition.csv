@@ -1,0 +1,86 @@
+food,serving_desc,serving_g,calories,protein_g,fat_g,carbs_g,fiber_g,iron_mg,calcium_mg,vitamin_c_mg,category,cuisine,aliases
+roti,1 medium roti,40,105,3.1,0.9,20.5,2.8,1.0,10,0,grain,indian,chapati|phulka|whole wheat roti
+paratha,1 plain paratha,60,180,3.6,7.5,24.0,3.0,1.2,15,0,grain,indian,plain paratha
+naan,1 naan,90,260,7.5,5.0,45.0,2.0,1.5,40,0,grain,indian,butter naan
+white rice cooked,1 katori,150,195,4.0,0.4,44.0,0.6,0.3,10,0,grain,indian,rice|steamed rice|plain rice
+brown rice cooked,1 katori,150,165,3.7,1.2,34.0,2.7,0.6,10,0,grain,indian,
+poha,1 plate,180,250,4.5,7.0,42.0,2.5,3.0,15,5,grain,indian,flattened rice|beaten rice
+upma,1 plate,180,230,5.5,8.0,34.0,2.5,1.0,20,3,grain,indian,rava upma
+idli,2 idlis,120,140,4.5,0.6,29.0,1.5,0.6,15,0,grain,indian,idly
+dosa,1 plain dosa,100,170,3.5,6.0,25.0,1.2,0.8,10,0,grain,indian,plain dosa
+masala dosa,1 masala dosa,180,300,5.5,10.0,46.0,3.0,1.5,25,8,grain,indian,
+oats cooked,1 bowl,200,150,5.0,3.0,25.0,3.8,1.7,80,0,grain,international,oatmeal|porridge
+bread whole wheat,2 slices,60,150,6.0,2.0,27.0,3.6,1.6,50,0,grain,international,brown bread|whole wheat bread
+bread white,2 slices,60,160,5.0,2.0,30.0,1.4,1.8,80,0,grain,international,white bread
+pasta cooked,1 plate,200,260,9.5,1.5,50.0,3.0,1.2,15,0,grain,international,spaghetti|penne
+quinoa cooked,1 bowl,185,220,8.0,3.5,39.0,5.2,2.8,30,0,grain,international,
+dal toor cooked,1 katori,150,140,7.5,3.0,20.0,4.0,1.5,25,1,legume,indian,dal|toor dal|arhar dal|dal tadka
+dal moong cooked,1 katori,150,125,8.0,1.5,19.0,4.5,1.4,20,1,legume,indian,moong dal|green gram dal
+dal masoor cooked,1 katori,150,130,8.0,2.0,19.5,4.2,1.9,20,1,legume,indian,masoor dal|red lentil
+chana masala,1 katori,160,210,8.5,8.0,26.0,6.5,2.5,50,6,legume,indian,chole|chickpea curry|chana
+rajma curry,1 katori,160,195,8.0,6.0,26.5,6.0,2.2,45,3,legume,indian,rajma|kidney bean curry
+sambar,1 katori,150,110,4.5,3.5,15.0,3.5,1.2,25,8,legume,indian,
+roasted chana,1 handful,30,110,6.0,1.8,17.0,4.5,1.9,50,0,legume,indian,roasted chickpeas|bhuna chana
+soya chunks cooked,1 katori,100,130,13.0,0.5,10.0,4.0,2.5,50,0,legume,indian,soya|soybean chunks
+tofu,100 g,100,80,9.0,4.5,2.0,0.5,1.6,200,0,protein,international,bean curd
+paneer,50 g,50,132,9.0,10.5,1.8,0.0,0.2,240,0,dairy,indian,cottage cheese|paneer cubes
+paneer bhurji,1 katori,120,220,12.0,17.0,5.0,1.0,0.5,300,10,dairy,indian,
+curd,1 katori,150,90,4.8,4.5,7.0,0.0,0.1,180,1,dairy,indian,yogurt|dahi|plain yogurt
+buttermilk,1 glass,200,40,2.0,1.0,4.5,0.0,0.1,80,1,dairy,indian,chaas|chhach
+milk toned,1 glass,200,120,6.5,6.0,10.0,0.0,0.2,240,2,dairy,indian,milk|toned milk
+cheese,1 slice,20,80,5.0,6.5,0.5,0.0,0.1,140,0,dairy,international,cheddar|cheese slice
+ghee,1 tsp,5,45,0.0,5.0,0.0,0.0,0.0,0,0,fat,indian,clarified butter
+butter,1 tsp,5,36,0.0,4.0,0.0,0.0,0.0,1,0,fat,international,
+egg boiled,1 egg,50,78,6.3,5.3,0.6,0.0,0.9,28,0,protein,international,boiled egg|egg|eggs
+egg omelette,2-egg omelette,120,220,13.0,17.0,2.0,0.0,1.9,60,0,protein,international,omelette|omelet
+chicken curry,1 katori,180,280,22.0,18.0,6.0,1.5,1.5,30,4,protein,indian,chicken|chicken masala
+chicken grilled,100 g,100,165,31.0,3.6,0.0,0.0,1.0,15,0,protein,international,grilled chicken|chicken breast
+fish curry,1 katori,180,220,20.0,12.0,6.0,1.0,1.0,40,3,protein,indian,fish|fish masala
+fish fried,100 g,100,230,20.0,15.0,5.0,0.3,0.8,30,0,protein,indian,fried fish
+mutton curry,1 katori,180,320,22.0,24.0,5.0,1.0,2.7,25,3,protein,indian,mutton|lamb curry
+mixed vegetable sabzi,1 katori,140,120,3.0,6.0,13.0,4.0,1.2,45,25,vegetable,indian,sabzi|mixed veg|vegetable curry
+aloo sabzi,1 katori,140,160,2.5,7.0,22.0,2.8,0.8,20,12,vegetable,indian,potato curry|aloo|potato sabzi
+palak paneer,1 katori,150,240,11.0,19.0,7.0,3.0,2.8,350,18,vegetable,indian,spinach paneer
+bhindi sabzi,1 katori,120,110,2.5,7.0,10.0,3.5,0.7,80,16,vegetable,indian,okra|ladyfinger
+baingan bharta,1 katori,140,130,2.5,8.0,12.5,4.5,0.8,25,10,vegetable,indian,eggplant|brinjal
+salad mixed,1 plate,150,45,2.0,0.5,9.0,3.0,1.0,35,25,vegetable,international,green salad|salad
+spinach cooked,1 katori,120,55,3.5,3.0,4.5,2.8,3.5,120,10,vegetable,indian,palak
+broccoli steamed,1 katori,90,31,2.5,0.3,6.0,2.4,0.7,42,81,vegetable,international,
+carrot,1 medium,60,25,0.6,0.1,6.0,1.7,0.2,20,4,vegetable,international,gajar
+cucumber,1 medium,150,23,1.0,0.2,5.5,0.8,0.4,24,4,vegetable,international,kheera
+tomato,1 medium,120,22,1.1,0.2,4.7,1.5,0.3,12,17,vegetable,international,tamatar
+apple,1 medium,180,95,0.5,0.3,25.0,4.4,0.2,11,8,fruit,international,seb
+banana,1 medium,120,105,1.3,0.4,27.0,3.1,0.3,6,10,fruit,international,kela
+orange,1 medium,130,62,1.2,0.2,15.0,3.1,0.1,52,70,fruit,international,santra
+mango,1 cup sliced,165,99,1.4,0.6,25.0,2.6,0.3,18,60,fruit,indian,aam
+papaya,1 cup cubes,145,62,0.7,0.4,16.0,2.5,0.4,29,88,fruit,indian,papita
+guava,1 medium,100,68,2.6,1.0,14.0,5.4,0.3,18,228,fruit,indian,amrud
+grapes,1 cup,150,104,1.1,0.2,27.0,1.4,0.5,15,5,fruit,international,angoor
+pomegranate,half cup arils,90,72,1.5,1.0,16.5,3.5,0.3,9,9,fruit,indian,anar
+watermelon,1 cup cubes,150,46,0.9,0.2,11.5,0.6,0.4,11,12,fruit,international,tarbooz
+almonds,10 almonds,12,70,2.6,6.0,2.5,1.5,0.4,32,0,nuts,international,badam
+walnuts,4 halves,16,105,2.4,10.5,2.2,1.1,0.5,16,0,nuts,international,akhrot
+peanuts roasted,1 handful,30,170,7.5,14.5,5.0,2.5,0.7,16,0,nuts,indian,groundnut|moongphali
+cashews,10 cashews,15,85,2.7,6.8,4.5,0.5,1.0,6,0,nuts,international,kaju
+peanut butter,1 tbsp,16,95,4.0,8.0,3.0,1.0,0.3,7,0,nuts,international,
+samosa,1 samosa,90,260,4.5,14.0,29.0,2.5,1.3,25,3,snack,indian,
+pakora,5 pieces,80,240,5.5,16.0,18.0,2.5,1.4,30,4,snack,indian,bhajiya|fritters
+vada pav,1 vada pav,150,290,7.0,12.0,39.0,3.0,1.8,40,6,snack,indian,
+poori,2 pooris,60,210,3.5,11.0,24.0,2.2,1.0,12,0,snack,indian,puri
+biryani chicken,1 plate,300,480,22.0,17.0,58.0,3.0,2.5,50,8,mixed,indian,chicken biryani|biryani
+biryani veg,1 plate,300,400,9.0,14.0,60.0,4.5,2.0,45,10,mixed,indian,veg biryani
+khichdi,1 plate,250,280,9.5,7.0,44.0,5.0,1.8,30,4,mixed,indian,kichdi|khichri
+pav bhaji,1 plate,250,400,9.0,17.0,52.0,6.0,2.5,60,30,mixed,indian,
+pizza slice,1 slice,110,285,12.0,10.5,36.0,2.5,2.0,200,2,mixed,international,pizza
+burger veg,1 burger,180,390,10.0,17.0,49.0,3.5,2.3,90,4,mixed,international,veg burger
+sandwich veg,1 sandwich,150,250,8.0,8.0,36.0,4.0,1.8,80,10,mixed,international,vegetable sandwich|sandwich
+maggi noodles,1 pack cooked,270,350,7.5,13.0,50.0,2.0,1.5,25,0,mixed,indian,instant noodles|noodles
+fried rice veg,1 plate,250,330,7.0,10.0,52.0,3.0,1.5,30,8,mixed,international,veg fried rice
+sweet gulab jamun,2 pieces,80,300,4.0,12.0,44.0,0.5,0.6,60,0,sweet,indian,gulab jamun
+kheer,1 katori,150,215,5.5,7.0,33.0,0.5,0.4,140,1,sweet,indian,rice pudding|payasam
+jalebi,2 pieces,60,230,1.5,9.0,36.0,0.3,0.5,10,0,sweet,indian,
+dark chocolate,4 squares,25,135,1.5,9.0,12.0,1.5,1.7,15,0,sweet,international,chocolate
+tea with milk,1 cup,150,45,1.5,1.5,7.0,0.0,0.1,40,0,beverage,indian,chai|milk tea
+coffee with milk,1 cup,150,50,1.8,1.8,7.0,0.0,0.1,50,0,beverage,international,coffee
+fruit juice,1 glass,200,110,0.5,0.2,27.0,0.4,0.4,15,40,beverage,international,juice
+coconut water,1 glass,240,46,1.8,0.5,9.0,2.6,0.7,58,6,beverage,indian,nariyal pani

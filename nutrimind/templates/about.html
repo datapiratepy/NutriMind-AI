@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% block title %}About the AI{% endblock %}
+{% block page %}
+<div style="max-width:60rem" class="mx-auto">
+  <h1 class="h3 mb-1">How NutriMind AI works</h1>
+  <p class="text-2 mb-4">A transparent look at the architecture: multi-agent
+    orchestration, retrieval-augmented generation, IBM Granite, and strictly
+    deterministic mathematics.</p>
+
+  <div class="nm-card p-3 p-lg-4 mb-4">
+    <h2 class="h5">Agentic AI, not a chatbot</h2>
+    <p class="text-2">A single-prompt chatbot pushes every request through one
+      model call. NutriMind instead runs a <strong>Coordinator</strong> that
+      classifies each request — with deterministic rules first, IBM Granite only
+      for ambiguous cases — and hands it to one of four specialists. Every answer
+      tells you which agent handled it and why.</p>
+    <div class="nm-diagram mt-3" role="img"
+         aria-label="Request flow: user message to coordinator to specialist agent to tools to answer">
+      <div class="nm-diagram-row"><strong>Your message</strong>
+        <span class="text-2">"Can diabetics eat bananas?"</span></div>
+      <div class="nm-diagram-down">↓</div>
+      <div class="nm-diagram-row"><strong>Coordinator</strong>
+        <span class="text-2">rules matched "diabet…" → Health Advisor ·
+          reason shown in the chat metadata</span></div>
+      <div class="nm-diagram-down">↓</div>
+      <div class="nm-diagram-row"><strong>Specialist agent</strong>
+        <span class="text-2">runs its tools (retriever, nutrition service, food
+          table) — every invocation is listed in the response</span></div>
+      <div class="nm-diagram-down">↓</div>
+      <div class="nm-diagram-row"><strong>IBM Granite</strong>
+        <span class="text-2">writes the language around verified numbers and
+          retrieved evidence</span></div>
+      <div class="nm-diagram-down">↓</div>
+      <div class="nm-diagram-row"><strong>Answer + metadata</strong>
+        <span class="text-2">agent badge · grounded indicator · citations ·
+          tool list · timing · tokens</span></div>
+    </div>
+  </div>
+
+  <div class="nm-card p-3 p-lg-4 mb-4">
+    <h2 class="h5">Retrieval-Augmented Generation (RAG)</h2>
+    <p class="text-2 mb-2">Factual questions are answered against
+      <em>your</em> nutrition documents, not just model memory:</p>
+    <div class="nm-diagram" role="img" aria-label="RAG pipeline diagram">
+      <div class="nm-diagram-row"><strong>1 · Ingest</strong>
+        <span class="text-2">PDF → text per page → ~800-character chunks with
+          page metadata → embeddings → <strong>ChromaDB</strong> vector store</span></div>
+      <div class="nm-diagram-row"><strong>2 · Retrieve</strong>
+        <span class="text-2">your question is embedded and the top-5 most similar
+          chunks are fetched</span></div>
+      <div class="nm-diagram-row"><strong>3 · Threshold</strong>
+        <span class="text-2">chunks below 0.35 similarity are rejected — weak
+          matches are never dressed up as evidence</span></div>
+      <div class="nm-diagram-row"><strong>4 · Generate</strong>
+        <span class="text-2">Granite answers <em>from the passages</em>, citing
+          them as [1], [2] with filename + page</span></div>
+      <div class="nm-diagram-row"><strong>5 · Label</strong>
+        <span class="text-2">if nothing passed the threshold, the answer is
+          visibly marked <em>General knowledge — not from your documents</em></span></div>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-md-6">
+      <div class="nm-card p-3 h-100">
+        <h2 class="h6"><i class="bi bi-cloud me-1" style="color:var(--nm-accent)"></i>
+          IBM watsonx.ai &amp; Granite</h2>
+        <p class="text-2 mb-0" style="font-size:.9rem">watsonx.ai is IBM's
+          enterprise AI platform. NutriMind calls the <code>granite-4-h-small</code>
+          chat model and <code>granite-embedding-278m-multilingual</code> through
+          the official Python SDK, with retries, typed error translation and a
+          zero-token startup health check. Without credentials the app switches
+          to a deterministic demo engine — same architecture, canned language.</p>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="nm-card p-3 h-100">
+        <h2 class="h6"><i class="bi bi-database me-1" style="color:var(--nm-accent)"></i>
+          ChromaDB &amp; embeddings</h2>
+        <p class="text-2 mb-0" style="font-size:.9rem">Embeddings turn text into
+          vectors whose distance reflects meaning. Each embedding provider
+          (watsonx / local / hash-fallback) writes to its own Chroma collection so
+          incompatible vector spaces never mix. Every chunk stores filename, page,
+          chunk number, upload date, provider and document ID — that's where the
+          citations come from.</p>
+      </div>
+    </div>
+  </div>
+
+  <h2 class="h5 mb-3">The agent team</h2>
+  <div class="row g-3 mb-4">
+    {% for icon, name, role in [
+      ("signpost-split", "Coordinator", "Routes every request and explains the decision. Handles BMI and small talk itself — zero AI tokens."),
+      ("journal-text", "Knowledge Agent", "RAG-first Q&A. Grounded answers cite your documents by file and page; anything else is labeled general knowledge."),
+      ("calendar-week", "Meal Planner", "Daily targets are computed with the Mifflin-St Jeor equation in Python; Granite only composes meals to fit them."),
+      ("clipboard-data", "Meal Analyzer", "Extracts foods from plain language, prices them against a curated 85-food composition table, then assesses the numbers."),
+      ("heart-pulse", "Health Advisor", "Condition-aware guidance (diabetes, blood pressure, weight goals…) grounded in your documents, with safety framing."),
+    ] %}
+    <div class="col-md-6 col-xl-4">
+      <div class="nm-card p-3 h-100">
+        <div class="d-flex gap-2 align-items-center mb-1">
+          <i class="bi bi-{{ icon }}" style="color:var(--nm-accent)"></i>
+          <strong>{{ name }}</strong></div>
+        <span class="text-2" style="font-size:.9rem">{{ role }}</span>
+      </div>
+    </div>
+    {% endfor %}
+    <div class="col-md-6 col-xl-4">
+      <div class="nm-card p-3 h-100" style="border-style:dashed">
+        <div class="d-flex gap-2 align-items-center mb-1">
+          <i class="bi bi-calculator" style="color:var(--nm-amber)"></i>
+          <strong>Deterministic core</strong></div>
+        <span class="text--2 text-2" style="font-size:.9rem">BMI, BMR/TDEE, macro
+          targets, food math and the health score are pure Python — reproducible,
+          testable, and never hallucinated.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="nm-card mb-4" id="status">
+    <div class="card-header px-3 py-2 d-flex justify-content-between">
+      <span>Live system status</span>
+      <span class="text-2 fw-normal" style="font-size:.8rem">from /api/system/info</span>
+    </div>
+    <div class="p-3">
+      <div class="row g-2" id="about-status">
+        <div class="col-12"><div class="nm-skeleton mb-1"></div>
+          <div class="nm-skeleton" style="width:70%"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(async function () {
+  const grid = document.getElementById("about-status");
+  try {
+    const [info, docs] = await Promise.all([
+      NM.api("/api/system/info"),
+      NM.api("/api/documents").catch(() => ({ documents: [] })),
+    ]);
+    const chroma = typeof info.storage.chroma === "object" ? info.storage.chroma : null;
+    const indexed = docs.documents.filter((d) => d.status === "indexed").length;
+    const cell = (label, value, ok) => `<div class="col-6 col-lg-3">
+      <div class="border rounded p-2 h-100" style="border-color:var(--nm-border)!important">
+        <div class="nm-kicker">${label}</div>
+        <div class="mt-1 ${ok === false ? "" : ""}" style="font-size:.9rem">
+          ${ok !== undefined ? `<i class="bi ${ok ? "bi-check-circle-fill" : "bi-exclamation-circle"}"
+            style="color:var(${ok ? "--nm-green" : "--nm-amber"})"></i> ` : ""}${value}</div>
+      </div></div>`;
+    grid.innerHTML =
+      cell("IBM connected", info.mode.demo_active ? "Demo mode" : "Connected", !info.mode.demo_active) +
+      cell("Granite model", `<code>${NM.esc(info.ibm.chat_model.replace("ibm/", ""))}</code>`) +
+      cell("Embedding provider", NM.esc(chroma ? chroma.provider : info.ibm.embeddings_provider_setting)) +
+      cell("Chroma", chroma ? `${chroma.chunks} chunks` : "unavailable", !!chroma) +
+      cell("Database", info.storage.database, info.storage.database === "ok") +
+      cell("Demo mode", info.mode.demo_active ? "active" : "off") +
+      cell("Documents indexed", String(indexed)) +
+      cell("App version", NM.esc(info.app.version));
+  } catch (e) {
+    grid.innerHTML = `<div class="nm-empty py-3">Status unavailable.</div>`;
+  }
+})();
+</script>
+{% endblock %}

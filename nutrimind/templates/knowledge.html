@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Knowledge Base{% endblock %}
+{% block page %}
+<div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+  <div>
+    <h1 class="h4 mb-0">Knowledge base</h1>
+    <span class="text-2" style="font-size:.85rem">PDFs indexed into ChromaDB —
+      the source of grounded answers and citations</span>
+  </div>
+  <span class="nm-badge" id="kb-provider"><i class="bi bi-cpu"></i> …</span>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-4">
+    <div class="nm-drop" id="kb-drop" role="button" tabindex="0"
+         aria-label="Upload a PDF: click or drop a file here">
+      <i class="bi bi-cloud-arrow-up fs-2 d-block mb-2"></i>
+      <strong>Drop a nutrition PDF here</strong><br>
+      <span style="font-size:.85rem">or click to browse · max {{ config.NUTRIMIND_SETTINGS.max_upload_mb }} MB ·
+        text-based PDFs only</span>
+      <input type="file" id="kb-file" accept="application/pdf" class="d-none">
+    </div>
+    <div id="kb-upload-state" class="mt-2 d-none">
+      <div class="d-flex align-items-center gap-2">
+        <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
+        <span style="font-size:.88rem">Indexing — extracting, chunking, embedding…</span>
+      </div>
+    </div>
+
+    <div class="nm-card mt-3">
+      <div class="card-header px-3 py-2">Test retrieval</div>
+      <div class="p-3">
+        <form id="kb-search-form" class="d-flex gap-2">
+          <label class="visually-hidden" for="kb-search">Search the knowledge base</label>
+          <input class="form-control form-control-sm" id="kb-search"
+                 placeholder="e.g. how much vitamin C…">
+          <button class="btn btn-sm btn-outline-secondary" type="submit"
+                  aria-label="Search"><i class="bi bi-search"></i></button>
+        </form>
+        <div id="kb-search-results" class="mt-2" style="font-size:.85rem"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-8">
+    <div class="nm-card">
+      <div class="card-header px-3 py-2 d-flex justify-content-between">
+        <span>Documents</span>
+        <button class="btn btn-link btn-sm p-0" id="kb-refresh">refresh</button>
+      </div>
+      <div class="table-responsive">
+        <table class="table mb-0 nm-table align-middle">
+          <thead><tr>
+            <th scope="col">File</th><th scope="col">Status</th>
+            <th scope="col">Pages</th><th scope="col">Chunks</th>
+            <th scope="col">Uploaded</th><th scope="col" class="text-end">Actions</th>
+          </tr></thead>
+          <tbody id="kb-rows">
+            <tr><td colspan="6"><div class="nm-skeleton my-2"></div>
+              <div class="nm-skeleton" style="width:60%"></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/knowledge.js') }}"></script>
+{% endblock %}

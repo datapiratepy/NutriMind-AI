@@ -1,0 +1,31 @@
+# Secrets — never commit
+.env
+
+# Runtime state (SQLite DB, uploads, vector store)
+instance/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environments
+.venv/
+venv/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Internship reference material (local only, never published)
+_reference/
+
+# Development-session artifacts (not part of the application)
+.sync_probe.txt
+.verify_phase3_bundle.py
+.ruff_cache/
+.coverage.*

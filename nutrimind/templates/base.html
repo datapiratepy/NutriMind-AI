@@ -1,0 +1,111 @@
+<!doctype html>
+{# Application shell: topbar + responsive sidebar + main + footer.
+   Pages extend this and fill: title, page (content), scripts (optional). #}
+<html lang="en" data-bs-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}NutriMind AI{% endblock %} · NutriMind AI</title>
+  <meta name="description" content="AI-powered nutrition assistant using IBM watsonx.ai, Granite and RAG">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+  <script>
+    // Apply saved theme before first paint to avoid a flash.
+    (function () {
+      var saved = localStorage.getItem("nutrimind-theme") || "auto";
+      var dark = saved === "dark" || (saved === "auto" &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches);
+      document.documentElement.setAttribute("data-bs-theme", dark ? "dark" : "light");
+    })();
+  </script>
+</head>
+<body>
+<a class="skip-link" href="#nm-content">Skip to main content</a>
+
+<header class="nm-topbar navbar navbar-expand px-3 sticky-top">
+  <button class="btn btn-link d-lg-none p-1 me-1 text-2" data-bs-toggle="offcanvas"
+          data-bs-target="#nmSidebar" aria-label="Open navigation">
+    <i class="bi bi-list fs-4"></i>
+  </button>
+  <a class="navbar-brand nm-brand d-flex align-items-center gap-2" href="/">
+    <i class="bi bi-hexagon-half fs-5" aria-hidden="true"></i>
+    <span>NutriMind AI</span>
+    <span class="d-none d-md-inline text-2 fw-normal" style="font-size:.78rem">
+      · IBM watsonx.ai + Granite + RAG</span>
+  </a>
+  <div class="ms-auto d-flex align-items-center gap-2">
+    <span id="nm-mode-badge" class="nm-badge" title="Application mode">
+      <span class="nm-skeleton" style="width:52px">&nbsp;</span>
+    </span>
+    <button id="nm-theme-toggle" class="btn btn-sm btn-outline-secondary border-0"
+            aria-label="Toggle color theme" title="Theme: light / dark / auto">
+      <i class="bi bi-circle-half"></i>
+    </button>
+  </div>
+</header>
+
+<div class="nm-layout">
+  <nav class="nm-sidebar offcanvas-lg offcanvas-start" tabindex="-1" id="nmSidebar"
+       aria-label="Primary navigation">
+    <div class="offcanvas-header d-lg-none">
+      <span class="fw-semibold">Menu</span>
+      <button class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#nmSidebar"
+              aria-label="Close navigation"></button>
+    </div>
+    <div class="offcanvas-body d-lg-block p-0 pt-lg-3">
+      <ul class="nav flex-column nm-nav">
+        {% set items = [
+          ("/", "house", "Home"),
+          ("/chat", "chat-square-text", "AI Chat"),
+          ("/dashboard", "grid-1x2", "Dashboard"),
+          ("/planner", "calendar-week", "Meal Planner"),
+          ("/analyzer", "clipboard-data", "Meal Analyzer"),
+          ("/knowledge", "journal-bookmark", "Knowledge Base"),
+          ("/history", "clock-history", "History"),
+          ("/profile", "person-circle", "Profile"),
+          ("/about", "diagram-3", "About the AI"),
+        ] %}
+        {% for href, icon, label in items %}
+        <li class="nav-item">
+          <a class="nav-link {{ 'active' if request.path == href else '' }}" href="{{ href }}"
+             {% if request.path == href %}aria-current="page"{% endif %}>
+            <i class="bi bi-{{ icon }}" aria-hidden="true"></i>{{ label }}
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </nav>
+
+  <main class="nm-main" id="nm-content">
+    {% block page %}{% endblock %}
+  </main>
+</div>
+
+{% include "partials/footer.html" %}
+
+<div class="toast-container position-fixed bottom-0 end-0 p-3" id="nm-toasts"
+     aria-live="polite" aria-atomic="true"></div>
+
+<div class="modal fade" id="nm-confirm" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content nm-card">
+      <div class="modal-body pt-4" id="nm-confirm-text">Are you sure?</div>
+      <div class="modal-footer border-0 pt-0">
+        <button class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-sm btn-danger" id="nm-confirm-yes">Confirm</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.5/dist/purify.min.js"></script>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}History{% endblock %}
+{% block page %}
+<h1 class="h4 mb-3">History</h1>
+<ul class="nav nav-tabs mb-3" role="tablist">
+  <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab"
+    data-bs-target="#tab-meals" type="button" role="tab">Meals</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab"
+    data-bs-target="#tab-bmi" type="button" role="tab">BMI</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab"
+    data-bs-target="#tab-chats" type="button" role="tab">Conversations</button></li>
+</ul>
+<div class="tab-content">
+  <div class="tab-pane fade show active" id="tab-meals" role="tabpanel">
+    <div class="nm-card p-3" id="hist-meals"><div class="nm-skeleton mb-2"></div></div>
+  </div>
+  <div class="tab-pane fade" id="tab-bmi" role="tabpanel">
+    <div class="nm-card p-3" id="hist-bmi"><div class="nm-skeleton mb-2"></div></div>
+  </div>
+  <div class="tab-pane fade" id="tab-chats" role="tabpanel">
+    <div class="nm-card p-3" id="hist-chats"><div class="nm-skeleton mb-2"></div></div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(async function () {
+  const $ = (id) => document.getElementById(id);
+  try {
+    const { meals } = await NM.api("/api/meals?days=90");
+    $("hist-meals").innerHTML = meals.length ? `<div class="table-responsive">
+      <table class="table nm-table mb-0"><thead><tr><th>When</th><th>Foods</th>
+      <th>kcal</th><th>P</th><th>F</th><th>C</th><th>Quality</th></tr></thead><tbody>` +
+      meals.slice().reverse().map((m) => `<tr>
+        <td class="text-2" style="font-size:.83rem">${NM.timeAgo(m.ts)}</td>
+        <td>${NM.esc((m.items || []).map((i) => i.food).join(", ") || m.raw_text || "—")}</td>
+        <td>${Math.round(m.calories)}</td><td>${Math.round(m.protein_g)} g</td>
+        <td>${Math.round(m.fat_g)} g</td><td>${Math.round(m.carbs_g)} g</td>
+        <td>${m.quality_score != null ? m.quality_score + "/100" : "—"}</td></tr>`).join("")
+      + "</tbody></table></div>"
+      : `<div class="nm-empty"><i class="bi bi-clipboard-data"></i>
+         No meals logged yet — try the <a href="/analyzer">Analyzer</a>.</div>`;
+  } catch (e) { $("hist-meals").innerHTML = NM.esc(e.message); }
+
+  try {
+    const { records } = await NM.api("/api/bmi/history");
+    $("hist-bmi").innerHTML = records.length ? `<div class="table-responsive">
+      <table class="table nm-table mb-0"><thead><tr><th>When</th><th>Weight</th>
+      <th>BMI</th><th>Category</th><th>Healthy range</th></tr></thead><tbody>` +
+      records.map((r) => `<tr>
+        <td class="text-2" style="font-size:.83rem">${NM.timeAgo(r.ts)}</td>
+        <td>${r.weight_kg} kg</td><td><strong>${r.bmi}</strong></td>
+        <td>${NM.esc(r.category)}</td>
+        <td class="text-2">${r.ideal_weight_min_kg}–${r.ideal_weight_max_kg} kg</td>
+      </tr>`).join("") + "</tbody></table></div>"
+      : `<div class="nm-empty"><i class="bi bi-heart-pulse"></i>
+         No BMI records yet — save your <a href="/profile">profile</a>.</div>`;
+  } catch (e) { $("hist-bmi").innerHTML = NM.esc(e.message); }
+
+  try {
+    const { sessions } = await NM.api("/api/chat/sessions");
+    $("hist-chats").innerHTML = sessions.length ? sessions.map((s) => `
+      <a href="/chat?session_id=${encodeURIComponent(s.session_id)}"
+     class="d-flex justify-content-between py-2 border-bottom text-decoration-none text-reset"
+     style="border-color:var(--nm-border)!important">
+
+    <span class="text-truncate me-2">
+      <i class="bi bi-chat-left-text me-1 text-2"></i>
+      ${NM.esc(s.preview)}
+    </span>
+
+    <span class="text-2 flex-shrink-0" style="font-size:.83rem">
+      ${s.messages} messages · ${NM.timeAgo(s.last_at)}
+    </span>
+
+  </a>
+`).join("")
+      : `<div class="nm-empty"><i class="bi bi-chat-square-text"></i>
+         No conversations yet — <a href="/chat">start one</a>.</div>`;
+  } catch (e) { $("hist-chats").innerHTML = NM.esc(e.message); }
+})();
+</script>
+{% endblock %}

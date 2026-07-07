@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block page %}
+<div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+  <h1 class="h4 mb-0">Dashboard</h1>
+  <span class="text-2" style="font-size:.85rem">Deterministic metrics — computed
+    from your logs, never by the LLM</span>
+</div>
+
+<div id="dash-noprofile" class="nm-empty d-none mb-4">
+  <i class="bi bi-person-plus"></i>
+  <div class="mb-2">Set up your profile to unlock targets, BMI and the health score.</div>
+  <a class="btn btn-primary btn-sm" href="/profile">Create profile</a>
+</div>
+
+<div class="row g-3" id="dash-grid">
+  <div class="col-sm-6 col-xl-3">
+    <div class="nm-card p-3 h-100">
+      <div class="nm-kicker mb-1">BMI</div>
+      <div class="nm-stat" id="dash-bmi"><span class="nm-skeleton d-inline-block" style="width:70px">&nbsp;</span></div>
+      <div class="text-2" id="dash-bmi-detail"></div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-xl-3">
+    <div class="nm-card p-3 h-100">
+      <div class="nm-kicker mb-1">Health score · 7 days</div>
+      <div class="nm-stat" id="dash-score"><span class="nm-skeleton d-inline-block" style="width:70px">&nbsp;</span></div>
+      <div class="nm-progress progress mt-2" role="progressbar" aria-label="Health score">
+        <div class="progress-bar" id="dash-score-bar" style="width:0%"></div>
+      </div>
+      <button class="btn btn-link btn-sm p-0 mt-2" id="dash-score-why"
+              aria-expanded="false">Why this score?</button>
+      <div id="dash-score-detail" class="d-none mt-1" style="font-size:.82rem"></div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-xl-3">
+    <div class="nm-card p-3 h-100">
+      <div class="nm-kicker mb-1">Today's calories</div>
+      <div class="nm-stat" id="dash-cal"><span class="nm-skeleton d-inline-block" style="width:70px">&nbsp;</span></div>
+      <div class="nm-progress progress mt-2" role="progressbar" aria-label="Calorie target progress">
+        <div class="progress-bar" id="dash-cal-bar" style="width:0%"></div>
+      </div>
+      <div class="text-2 mt-1" id="dash-cal-target" style="font-size:.82rem"></div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-xl-3">
+    <div class="nm-card p-3 h-100 d-flex flex-column">
+      <div class="nm-kicker mb-1">Water today</div>
+      <div class="nm-stat" id="dash-water"><span class="nm-skeleton d-inline-block" style="width:70px">&nbsp;</span></div>
+      <div class="text-2" style="font-size:.82rem">target ≈ 8 glasses</div>
+      <button class="btn btn-outline-secondary btn-sm mt-auto align-self-start"
+              id="dash-water-add"><i class="bi bi-droplet me-1"></i>+1 glass</button>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="nm-card h-100">
+      <div class="card-header px-3 py-2 d-flex justify-content-between">
+        <span>Daily targets</span><span class="text-2 fw-normal">Mifflin-St Jeor</span>
+      </div>
+      <div class="p-3" id="dash-targets"><div class="nm-skeleton mb-2"></div>
+        <div class="nm-skeleton mb-2" style="width:80%"></div></div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="nm-card h-100">
+      <div class="card-header px-3 py-2">Recent meals</div>
+      <div class="p-3" id="dash-meals"><div class="nm-skeleton mb-2"></div>
+        <div class="nm-skeleton" style="width:60%"></div></div>
+    </div>
+  </div>
+
+  <div class="col-lg-8">
+    <div class="nm-card h-100">
+      <div class="card-header px-3 py-2 d-flex justify-content-between">
+        <span>This week</span>
+        <span class="text-2 fw-normal" style="font-size:.8rem">
+          calories per day · <span style="color:#2aa7c9">water</span> glasses</span>
+      </div>
+      <div class="p-3" id="dash-trends"><div class="nm-skeleton mb-2"></div>
+        <div class="nm-skeleton" style="width:70%"></div></div>
+    </div>
+  </div>
+  <div class="col-lg-4">
+    <div class="nm-card h-100">
+      <div class="card-header px-3 py-2">AI activity · 7 days</div>
+      <div class="p-3" id="dash-ai"><div class="nm-skeleton mb-2"></div>
+        <div class="nm-skeleton" style="width:60%"></div></div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="nm-card h-100">
+      <div class="card-header px-3 py-2">Recent AI conversations</div>
+      <div class="p-3" id="dash-chats"><div class="nm-skeleton mb-2"></div>
+        <div class="nm-skeleton" style="width:70%"></div></div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="nm-card h-100">
+      <div class="card-header px-3 py-2 d-flex justify-content-between">
+        <span>System status</span>
+        <a href="/about#status" class="fw-normal" style="font-size:.82rem">details</a>
+      </div>
+      <div class="p-3" id="dash-system"><div class="nm-skeleton mb-2"></div>
+        <div class="nm-skeleton" style="width:75%"></div></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+{% endblock %}

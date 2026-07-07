@@ -1,0 +1,164 @@
+# NutriMind AI
+
+**AI-Powered Nutrition Assistant · IBM watsonx.ai · Granite · RAG · Multi-Agent**
+
+![tests](https://img.shields.io/badge/tests-156%20passed-brightgreen)
+![coverage](https://img.shields.io/badge/coverage-88%25-brightgreen)
+![python](https://img.shields.io/badge/python-3.11+-blue)
+![license](https://img.shields.io/badge/license-MIT-lightgrey)
+<!-- After pushing, replace the tests badge with the live CI badge:
+![CI](https://github.com/<user>/nutrimind-ai/actions/workflows/ci.yml/badge.svg) -->
+
+NutriMind AI is a multi-agent nutrition assistant built for the IBM SkillsBuild +
+Edunet Foundation internship. A Coordinator agent routes every request to one of
+four specialized agents; factual answers are grounded in your own nutrition PDFs
+with page-level citations; and every number the app shows — calories, BMI, macro
+targets, health score — is computed deterministically in Python, never by the LLM.
+
+> **Runs with zero setup.** Without IBM credentials the app starts in a fully
+> functional demo mode; with an IBM Cloud Lite account it uses live Granite
+> models through the official watsonx.ai SDK.
+
+## Demo
+
+<!-- Optional: 30-second demo GIF (docs/SCREENSHOT_CHECKLIST.md) -->
+<!-- ![Demo](docs/screenshots/demo.gif) -->
+
+## Screenshots
+
+<!-- Add after first local run: -->
+| Chat with agent metadata | Dashboard | Knowledge base |
+|---|---|---|
+| ![Chat](docs/screenshots/chat.png) | ![Dashboard](docs/screenshots/dashboard.png) | ![Knowledge](docs/screenshots/knowledge.png) |
+
+## Key features
+
+**Agentic AI** — a Coordinator classifies each request (deterministic rules
+first, Granite JSON classification only for ambiguous cases) and routes it to
+the Knowledge, Meal Planner, Meal Analyzer or Health Advisor agent. Every
+response shows which agent answered, the routing reason, and the exact tools
+that ran.
+
+**RAG with honest grounding** — upload nutrition PDFs; they are chunked
+(page-bounded, overlapping), embedded, and indexed in ChromaDB. Answers above
+the similarity threshold cite sources by filename and page; anything else is
+visibly labeled *general knowledge*. No invented evidence, ever.
+
+**Deterministic nutrition engine** — Mifflin-St Jeor BMR/TDEE, macro targets,
+an 85-food curated composition table (Indian + international, Hindi aliases,
+micronutrients), WHO BMI categories, and an explainable 0-100 health score
+whose five components are shown with their reasons.
+
+**Product-grade UX** — streaming chat (SSE) with live progress, an AI workflow
+panel built from response metadata, dark/light themes, dashboard with
+dependency-free trend charts, drag-and-drop document management with retrieval
+preview, wizard profile with live BMI, and branded PDF export of meal plans.
+
+## Architecture
+
+```
+Browser (Bootstrap 5 · SSE · vanilla JS)
+        │
+Flask API (blueprints · validation · JSON error envelope · request IDs)
+        │
+Coordinator Agent ──► Knowledge │ Meal Planner │ Meal Analyzer │ Health Advisor
+        │                    │            │             │            │
+        │              Retriever   Nutrition Svc   Food Table   Retriever+Targets
+        │                    │            │             │            │
+LLMClient (watsonx.ai Granite ⇄ deterministic demo engine)
+        │
+ChromaDB (per-provider collections) · SQLite · curated food CSV
+```
+
+Rendered diagrams (system, routing, RAG, database, request & chat flows):
+[ARCHITECTURE_DIAGRAMS.md](docs/ARCHITECTURE_DIAGRAMS.md)
+
+Deep dives: [ARCHITECTURE.md](docs/ARCHITECTURE.md) ·
+[AGENTS.md](docs/AGENTS.md) · [FRONTEND.md](docs/FRONTEND.md) ·
+[IMPLEMENTATION_NOTES.md](docs/IMPLEMENTATION_NOTES.md)
+
+## Getting started
+
+```bash
+git clone <your-repo-url> nutrimind-ai
+cd nutrimind-ai
+python -m venv .venv && .venv\Scripts\activate    # Windows (source .venv/bin/activate on Unix)
+pip install -r requirements.txt
+python run.py                                      # → http://127.0.0.1:5000 (demo mode)
+```
+
+That's it — the app boots in **demo mode** with deterministic AI responses and
+a fully working RAG pipeline (hash embeddings), so every feature is
+demonstrable without credentials.
+
+### IBM Live mode
+
+1. Follow **[docs/IBM_SETUP.md](docs/IBM_SETUP.md)** (IBM Cloud Lite account,
+   watsonx.ai project, IAM API key — ~20 minutes, no credit card).
+2. `copy .env.example .env` and fill in your credentials.
+3. Verify: `python scripts/check_watsonx.py` (color-coded connectivity check,
+   validates your model IDs against the live catalog).
+4. Seed the knowledge base: `python scripts/seed_knowledge_base.py` after
+   placing nutrition PDFs in `knowledge_base/`.
+
+### Environment variables
+
+All configuration is environment-driven (see [.env.example](.env.example)):
+`WATSONX_APIKEY`, `WATSONX_PROJECT_ID`, `WATSONX_URL`, `WATSONX_MODEL_ID`,
+`WATSONX_EMBEDDING_MODEL_ID`, `APP_MODE` (live/demo/auto),
+`EMBEDDINGS_PROVIDER`, `FLASK_SECRET_KEY`, `MAX_UPLOAD_MB`, and RAG tuning
+(`RAG_CHUNK_SIZE`, `RAG_CHUNK_OVERLAP`, `RAG_TOP_K`,
+`RAG_SIMILARITY_THRESHOLD`). Secrets live only in `.env` (git-ignored).
+
+## Testing
+
+```bash
+pytest tests/ -q                                   # 156 tests
+pytest tests/ --cov=nutrimind --cov-report=term    # ~88% coverage
+```
+
+The suite runs entirely in demo mode — no API keys required — and covers the
+deterministic services, models, RAG pipeline, agents, routing rules, chat SSE
+protocol and PDF export. CI runs on every push (GitHub Actions).
+
+## Folder structure
+
+```
+nutrimind/          application package
+  agents/           coordinator + 4 specialists + tools
+  services/         llm/ (watsonx + demo) · rag · nutrition · bmi · score · export
+  retrieval/        chunker · embeddings · vector store · ingestion · retriever
+  models/ routes/ prompts/ utils/ templates/ static/
+knowledge_base/     seed PDFs (indexed by scripts/seed_knowledge_base.py)
+instance/           runtime data (SQLite, uploads, ChromaDB) — git-ignored
+scripts/ tests/ docs/
+```
+
+Full map with rationale: [docs/FOLDER_STRUCTURE.md](docs/FOLDER_STRUCTURE.md)
+
+## Technology stack
+
+Python 3.11+ · Flask 3 · SQLAlchemy 2 · **ibm-watsonx-ai** (Granite 4 chat +
+Granite embeddings) · ChromaDB · pypdf · ReportLab · Bootstrap 5.3 · vanilla
+JS (no build step) · pytest
+
+## Documentation
+
+| Doc | Purpose |
+|---|---|
+| [IBM_SETUP.md](docs/IBM_SETUP.md) | Zero-to-connected IBM walkthrough |
+| [MANUAL_TESTING.md](docs/MANUAL_TESTING.md) | Step-by-step verification guide |
+| [DEMO_GUIDE.md](docs/DEMO_GUIDE.md) | 5-7 minute evaluation demo script |
+| [INTERVIEW_GUIDE.md](docs/INTERVIEW_GUIDE.md) | Design-decision Q&A |
+| [SUBMISSION_CHECKLIST.md](docs/SUBMISSION_CHECKLIST.md) | Requirement → feature map |
+| [RELEASE_NOTES.md](docs/RELEASE_NOTES.md) | v1.0 summary, limitations, roadmap |
+
+## Future improvements
+
+Multi-user accounts (FK migration path prepared) · weekly PDF reports ·
+retrieval reranking for large knowledge bases · vendored UI assets for
+offline demos · threshold auto-tuning against live embeddings.
+
+## License
+
+[MIT](LICENSE) © 2026 Harsh Kamat · Educational project — not medical advice.

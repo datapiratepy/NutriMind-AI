@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Meal Analyzer{% endblock %}
+{% block page %}
+<div style="max-width:52rem" class="mx-auto">
+  <h1 class="h4 mb-1">Meal analyzer</h1>
+  <p class="text-2 mb-3">Describe what you ate in plain language. Foods are matched
+    against a curated composition table — the numbers are deterministic, the AI
+    only interprets them.</p>
+
+  <form id="an-form" class="nm-card p-3 mb-3">
+    <label class="form-label" for="an-input">What did you eat?</label>
+    <textarea class="form-control" id="an-input" rows="3" maxlength="2000"
+      placeholder="e.g. Today I ate 2 rotis, dal, paneer and an apple"></textarea>
+    <div class="d-flex align-items-center gap-2 mt-2">
+      <button class="btn btn-primary" type="submit" id="an-submit">
+        <i class="bi bi-clipboard-data me-1"></i>Analyze &amp; log</button>
+      <span class="text-2" style="font-size:.82rem">The meal is added to your
+        history and dashboard.</span>
+    </div>
+  </form>
+
+  <div id="an-progress" class="nm-status-line d-none mb-3">
+    <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
+    <span id="an-progress-text">Analyzing…</span>
+  </div>
+
+  <div id="an-result" class="d-none">
+    <div class="nm-card">
+      <div class="card-header px-3 py-2 d-flex justify-content-between align-items-center">
+        <span>Analysis</span><span id="an-quality"></span>
+      </div>
+      <div class="p-3">
+        <div class="d-flex flex-wrap gap-2 mb-3" id="an-macros"></div>
+        <div id="an-content" class="nm-msg-content p-0"></div>
+        <div id="an-unmatched" class="mt-2"></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/analyzer.js') }}"></script>
+{% endblock %}

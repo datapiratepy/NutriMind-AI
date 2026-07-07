@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Meal Planner{% endblock %}
+{% block page %}
+<div style="max-width:52rem" class="mx-auto">
+  <h1 class="h4 mb-1">Meal planner</h1>
+  <p class="text-2 mb-3">Targets are computed deterministically
+    (Mifflin-St Jeor); IBM Granite composes meals to fit them.</p>
+
+  <div class="nm-card p-3 mb-3">
+    <div class="nm-kicker mb-2">Your daily targets</div>
+    <div id="plan-targets" class="d-flex flex-wrap gap-2">
+      <span class="nm-skeleton d-inline-block" style="width:220px">&nbsp;</span>
+    </div>
+  </div>
+
+  <form id="plan-form" class="d-flex gap-2 mb-3">
+    <label class="visually-hidden" for="plan-note">Extra preferences</label>
+    <input class="form-control" id="plan-note" maxlength="200"
+           placeholder="Optional preferences, e.g. 'high protein, no rice at night'">
+    <button class="btn btn-primary flex-shrink-0" id="plan-generate" type="submit">
+      <i class="bi bi-stars me-1"></i>Generate plan</button>
+  </form>
+  <div id="plan-progress" class="nm-status-line d-none mb-3">
+    <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
+    <span id="plan-progress-text">Working…</span>
+  </div>
+
+  <div id="plan-result" class="d-none">
+    <div class="nm-card">
+      <div class="card-header px-3 py-2 d-flex justify-content-between align-items-center">
+        <span id="plan-title">Plan</span>
+        <span class="d-flex gap-2">
+          <span id="plan-mode-badge"></span>
+          <button class="btn btn-sm btn-outline-secondary" id="plan-pdf"
+                  title="Download as PDF"><i class="bi bi-download me-1"></i>PDF</button>
+        </span>
+      </div>
+      <div class="p-3" id="plan-meals"></div>
+      <div class="nm-meta-panel" id="plan-summary"></div>
+    </div>
+  </div>
+
+  <div class="nm-card mt-3">
+    <div class="card-header px-3 py-2">Saved plans</div>
+    <div class="p-3" id="plan-saved"><div class="nm-skeleton mb-2"></div></div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/planner.js') }}"></script>
+{% endblock %}

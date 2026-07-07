@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}AI Chat{% endblock %}
+{% block page %}
+<div class="nm-chat-wrap position-relative">
+  <div class="nm-chat-scroll" id="chat-scroll" aria-live="polite" aria-label="Conversation">
+    <div id="chat-empty" class="py-4">
+      <h2 class="h4 mb-1">Ask the agent team anything about nutrition</h2>
+      <p class="text-2 mb-3">Each answer shows which agent handled it, whether it was
+        grounded in your documents, and which tools ran.</p>
+      {% include "partials/sample_prompts.html" %}
+    </div>
+    <div id="chat-messages"></div>
+    <div id="chat-status" class="nm-status-line d-none my-2">
+      <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
+      <span id="chat-status-text">Working…</span>
+    </div>
+  </div>
+
+  <button id="chat-jump" class="btn btn-secondary btn-sm rounded-circle d-none"
+          style="position:absolute;right:1.5rem;bottom:7.5rem;z-index:5;width:38px;height:38px"
+          aria-label="Scroll to latest message" title="Jump to latest">
+    <i class="bi bi-arrow-down"></i>
+  </button>
+
+  <div class="nm-chat-input">
+    <form id="chat-form" class="d-flex gap-2 align-items-end">
+      <label class="visually-hidden" for="chat-input">Your message</label>
+      <textarea id="chat-input" class="form-control" rows="1" maxlength="2000"
+        placeholder="Message NutriMind…  (Enter to send · Shift+Enter for newline · press / to focus)"
+        style="resize:none"></textarea>
+      <button class="btn btn-primary flex-shrink-0" type="submit" id="chat-send"
+              aria-label="Send message"><i class="bi bi-send"></i></button>
+    </form>
+    <div class="text-2 mt-1" style="font-size:.75rem">
+      Educational tool — verify medical decisions with a professional.
+      <span id="chat-session-note"></span>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/chat.js') }}"></script>
+{% endblock %}

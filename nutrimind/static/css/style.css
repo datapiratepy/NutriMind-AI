@@ -1,0 +1,258 @@
+/* ==========================================================================
+   NutriMind AI — design system (IBM Carbon-inspired, Bootstrap 5.3 base)
+   Themes: [data-bs-theme="light"] / [data-bs-theme="dark"] via CSS tokens.
+   ========================================================================== */
+
+:root {
+  --nm-accent: #0f62fe;            /* IBM blue */
+  --nm-accent-soft: rgba(15, 98, 254, .12);
+  --nm-green: #24a148;
+  --nm-amber: #b28600;
+  --nm-red: #da1e28;
+  --nm-radius: 10px;
+  --nm-sidebar-w: 232px;
+  --nm-font: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+[data-bs-theme="light"] {
+  --nm-bg: #f4f6f8;
+  --nm-surface: #ffffff;
+  --nm-surface-2: #eef1f4;
+  --nm-border: #dde2e8;
+  --nm-text: #161616;
+  --nm-text-2: #55595f;
+  --nm-user-bubble: #e2ebfd;
+}
+
+[data-bs-theme="dark"] {
+  --nm-accent: #78a9ff;            /* accessible blue on dark */
+  --nm-accent-soft: rgba(120, 169, 255, .14);
+  --nm-green: #42be65;
+  --nm-amber: #d2a106;
+  --nm-red: #fa4d56;
+  --nm-bg: #14171a;
+  --nm-surface: #1d2125;
+  --nm-surface-2: #23282d;
+  --nm-border: #31373d;
+  --nm-text: #e4e7ea;
+  --nm-text-2: #9aa2aa;
+  --nm-user-bubble: #223a55;
+}
+
+/* --- base ---------------------------------------------------------------- */
+html, body { height: 100%; }
+body {
+  font-family: var(--nm-font);
+  background: var(--nm-bg);
+  color: var(--nm-text);
+  font-size: .95rem;
+}
+a { color: var(--nm-accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.text-2 { color: var(--nm-text-2) !important; }
+.skip-link {
+  position: absolute; left: -999px; top: 0; z-index: 2000;
+  background: var(--nm-accent); color: #fff; padding: .5rem 1rem;
+}
+.skip-link:focus { left: 0; }
+:focus-visible { outline: 2px solid var(--nm-accent); outline-offset: 2px; }
+
+/* --- app shell ------------------------------------------------------------ */
+.nm-topbar {
+  background: var(--nm-surface);
+  border-bottom: 1px solid var(--nm-border);
+  min-height: 56px;
+}
+.nm-brand { font-weight: 600; letter-spacing: .2px; color: var(--nm-text) !important; }
+.nm-brand .bi { color: var(--nm-accent); }
+.nm-layout { display: flex; min-height: calc(100vh - 56px); }
+.nm-sidebar {
+  width: var(--nm-sidebar-w);
+  background: var(--nm-surface);
+  border-right: 1px solid var(--nm-border);
+  flex-shrink: 0;
+}
+.nm-nav .nav-link {
+  color: var(--nm-text-2);
+  border-radius: 8px;
+  padding: .5rem .75rem;
+  margin: 0 .5rem .15rem;
+  display: flex; align-items: center; gap: .65rem;
+  font-size: .92rem;
+}
+.nm-nav .nav-link:hover { background: var(--nm-surface-2); color: var(--nm-text); }
+.nm-nav .nav-link.active {
+  background: var(--nm-accent-soft);
+  color: var(--nm-accent);
+  font-weight: 600;
+}
+.nm-main { flex: 1; min-width: 0; padding: 1.5rem clamp(1rem, 3vw, 2.25rem); }
+.nm-footer {
+  border-top: 1px solid var(--nm-border);
+  color: var(--nm-text-2);
+  font-size: .82rem;
+  background: var(--nm-surface);
+}
+
+/* --- components ------------------------------------------------------------ */
+.nm-card {
+  background: var(--nm-surface);
+  border: 1px solid var(--nm-border);
+  border-radius: var(--nm-radius);
+}
+.nm-card .card-header {
+  background: transparent;
+  border-bottom: 1px solid var(--nm-border);
+  font-weight: 600; font-size: .92rem;
+}
+.nm-stat { font-size: 1.75rem; font-weight: 650; line-height: 1.1; }
+.nm-kicker {
+  text-transform: uppercase; letter-spacing: .09em;
+  font-size: .72rem; font-weight: 600; color: var(--nm-text-2);
+}
+
+.nm-badge {
+  display: inline-flex; align-items: center; gap: .3rem;
+  font-size: .74rem; font-weight: 600;
+  padding: .22rem .55rem; border-radius: 999px;
+  border: 1px solid var(--nm-border);
+  background: var(--nm-surface-2); color: var(--nm-text-2);
+  white-space: nowrap;
+}
+.nm-badge-accent { background: var(--nm-accent-soft); color: var(--nm-accent); border-color: transparent; }
+.nm-badge-green { background: rgba(36,161,72,.14); color: var(--nm-green); border-color: transparent; }
+.nm-badge-amber { background: rgba(178,134,0,.14); color: var(--nm-amber); border-color: transparent; }
+.nm-badge-red   { background: rgba(218,30,40,.12); color: var(--nm-red); border-color: transparent; }
+
+.nm-empty {
+  text-align: center; color: var(--nm-text-2);
+  padding: 2.5rem 1rem; border: 1px dashed var(--nm-border);
+  border-radius: var(--nm-radius);
+}
+.nm-empty .bi { font-size: 1.9rem; display: block; margin-bottom: .5rem; }
+
+.nm-skeleton {
+  background: linear-gradient(90deg, var(--nm-surface-2) 25%, var(--nm-border) 50%, var(--nm-surface-2) 75%);
+  background-size: 200% 100%;
+  animation: nm-shimmer 1.4s infinite;
+  border-radius: 6px; min-height: .95rem;
+}
+@keyframes nm-shimmer { to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .nm-skeleton { animation: none; }
+  * { transition: none !important; }
+}
+
+/* --- chat ------------------------------------------------------------------ */
+.nm-chat-wrap { max-width: 860px; margin: 0 auto; display: flex; flex-direction: column; height: calc(100vh - 56px - 3rem); }
+.nm-chat-scroll { flex: 1; overflow-y: auto; padding: .25rem .25rem 1rem; }
+.nm-msg { margin-bottom: 1.1rem; display: flex; flex-direction: column; }
+.nm-msg-user { align-items: flex-end; }
+.nm-msg-user .nm-msg-body {
+  background: var(--nm-user-bubble); border-radius: var(--nm-radius);
+  padding: .65rem .9rem; max-width: 85%;
+}
+.nm-msg-assistant .nm-msg-card {
+  background: var(--nm-surface); border: 1px solid var(--nm-border);
+  border-radius: var(--nm-radius); max-width: 100%;
+}
+.nm-msg-head {
+  display: flex; align-items: center; gap: .4rem; flex-wrap: wrap;
+  padding: .55rem .9rem; border-bottom: 1px solid var(--nm-border);
+}
+.nm-msg-content { padding: .8rem .95rem; overflow-wrap: anywhere; }
+.nm-msg-content > :last-child { margin-bottom: 0; }
+.nm-msg-content table { width: 100%; font-size: .85rem; }
+.nm-msg-content table th, .nm-msg-content table td {
+  border: 1px solid var(--nm-border); padding: .3rem .5rem;
+}
+.nm-msg-content code { background: var(--nm-surface-2); padding: .1rem .3rem; border-radius: 4px; }
+.nm-msg-content pre {
+  background: var(--nm-surface-2); border: 1px solid var(--nm-border);
+  border-radius: 8px; padding: .75rem;
+}
+.nm-msg-foot {
+  display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
+  padding: .45rem .9rem; border-top: 1px solid var(--nm-border);
+  font-size: .78rem; color: var(--nm-text-2);
+}
+.nm-meta-panel {
+  border-top: 1px solid var(--nm-border);
+  padding: .7rem .9rem; font-size: .82rem; background: var(--nm-surface-2);
+  border-radius: 0 0 var(--nm-radius) var(--nm-radius);
+}
+.nm-status-line { color: var(--nm-text-2); font-size: .84rem; display: flex; gap: .5rem; align-items: center; }
+.nm-flow { display: flex; align-items: center; flex-wrap: wrap; gap: .35rem; }
+.nm-flow-step {
+  border: 1px solid var(--nm-border); background: var(--nm-surface);
+  border-radius: 999px; padding: .2rem .6rem; font-size: .74rem; font-weight: 600;
+}
+.nm-flow-step.accent { border-color: transparent; background: var(--nm-accent-soft); color: var(--nm-accent); }
+.nm-flow-arrow { color: var(--nm-text-2); font-size: .8rem; }
+.nm-cite {
+  display: inline-flex; gap: .3rem; align-items: center;
+  border: 1px solid var(--nm-border); border-radius: 6px;
+  padding: .18rem .5rem; font-size: .76rem; background: var(--nm-surface);
+}
+.nm-chat-input {
+  border-top: 1px solid var(--nm-border); padding-top: .75rem; margin-top: .25rem;
+}
+.nm-typing::after { content: "▍"; animation: nm-blink 1s step-start infinite; color: var(--nm-accent); }
+@keyframes nm-blink { 50% { opacity: 0; } }
+
+/* --- forms / wizard ---------------------------------------------------------- */
+.nm-step-dot {
+  width: 28px; height: 28px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--nm-surface-2); border: 1px solid var(--nm-border);
+  font-size: .8rem; font-weight: 600;
+}
+.nm-step-dot.active { background: var(--nm-accent); border-color: var(--nm-accent); color: #fff; }
+.nm-step-dot.done { background: var(--nm-accent-soft); color: var(--nm-accent); border-color: transparent; }
+
+/* --- knowledge upload ---------------------------------------------------------- */
+.nm-drop {
+  border: 2px dashed var(--nm-border); border-radius: var(--nm-radius);
+  padding: 2rem 1rem; text-align: center; color: var(--nm-text-2);
+  transition: border-color .15s, background .15s; cursor: pointer;
+}
+.nm-drop.dragover { border-color: var(--nm-accent); background: var(--nm-accent-soft); }
+
+/* --- about diagrams -------------------------------------------------------------- */
+.nm-diagram { display: flex; flex-direction: column; gap: .4rem; }
+.nm-diagram-row {
+  border: 1px solid var(--nm-border); border-radius: 8px;
+  background: var(--nm-surface); padding: .5rem .8rem;
+  display: flex; gap: .6rem; align-items: baseline; flex-wrap: wrap;
+}
+.nm-diagram-row strong { min-width: 130px; }
+.nm-diagram-down { text-align: center; color: var(--nm-text-2); line-height: .9; }
+
+/* --- misc ----------------------------------------------------------------------- */
+.nm-progress { height: 8px; border-radius: 999px; background: var(--nm-surface-2); }
+.nm-progress .progress-bar { border-radius: 999px; background: var(--nm-accent); }
+.nm-table th { color: var(--nm-text-2); font-weight: 600; font-size: .8rem; }
+.nm-prompt-chip {
+  border: 1px solid var(--nm-border); background: var(--nm-surface);
+  border-radius: 999px; padding: .45rem .9rem; font-size: .85rem;
+  color: var(--nm-text); cursor: pointer; text-align: left;
+}
+.nm-prompt-chip:hover { border-color: var(--nm-accent); color: var(--nm-accent); }
+@media (max-width: 991.98px) {
+  .nm-main { padding: 1rem; }
+  .nm-chat-wrap { height: calc(100vh - 56px - 2rem); }
+}
+
+/* --- mini bar charts (Phase 8, dependency-free) ------------------------------ */
+.nm-bars { display: flex; align-items: flex-end; gap: 6px; height: 110px; }
+.nm-bar-col { flex: 1; display: flex; flex-direction: column; align-items: center;
+  gap: 4px; min-width: 0; height: 100%; justify-content: flex-end; }
+.nm-bar { width: 100%; max-width: 42px; border-radius: 4px 4px 0 0;
+  background: var(--nm-accent); opacity: .85; min-height: 2px;
+  transition: opacity .15s; }
+.nm-bar:hover { opacity: 1; }
+.nm-bar.muted { background: var(--nm-border); }
+.nm-bar.water { background: #2aa7c9; }
+.nm-bar-label { font-size: .68rem; color: var(--nm-text-2); }
+.nm-target-line { border-top: 2px dashed var(--nm-amber); position: relative;
+  top: 0; width: 100%; }

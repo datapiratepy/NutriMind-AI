@@ -1,0 +1,16 @@
+{# Clickable demo prompts. data-prompt buttons are handled by app.js:
+   on /chat they fill the input; elsewhere they navigate to /chat?prompt=… #}
+<div class="d-flex flex-wrap gap-2" data-testid="sample-prompts">
+  {% for prompt in [
+    "How much protein is in paneer?",
+    "Can diabetics eat bananas?",
+    "Create a meal plan for me",
+    "Today I ate 2 rotis, dal, paneer and an apple",
+    "What should I eat for high blood pressure?",
+    "What is my BMI?",
+  ] %}
+  <button type="button" class="nm-prompt-chip" data-prompt="{{ prompt }}">
+    <i class="bi bi-stars me-1 text-2" aria-hidden="true"></i>{{ prompt }}
+  </button>
+  {% endfor %}
+</div>

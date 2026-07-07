@@ -1,0 +1,66 @@
+"""BMI history and daily water intake."""
+
+from __future__ import annotations
+
+import datetime as dt
+
+from sqlalchemy import CheckConstraint
+from sqlalchemy.orm import Mapped, mapped_column
+
+from nutrimind.extensions import db
+
+
+class BMIRecord(db.Model):
+    """A point-in-time BMI computation, kept for the trend chart."""
+
+    __tablename__ = "bmi_records"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ts: Mapped[dt.datetime] = mapped_column(default=dt.datetime.utcnow, index=True)
+    height_cm: Mapped[float]
+    weight_kg: Mapped[float]
+    bmi: Mapped[float]
+    category: Mapped[str] = mapped_column(db.String(20))
+    ideal_weight_min_kg: Mapped[float]
+    ideal_weight_max_kg: Mapped[float]
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "ts": self.ts.isoformat() if self.ts else None,
+            "height_cm": self.height_cm,
+            "weight_kg": self.weight_kg,
+            "bmi": self.bmi,
+            "category": self.category,
+            "ideal_weight_min_kg": self.ideal_weight_min_kg,
+            "ideal_weight_max_kg": self.ideal_weight_max_kg,
+        }
+
+
+class WaterLog(db.Model):
+    """Glasses of water per calendar day (one row per day)."""
+
+    __tablename__ = "water_logs"
+    __table_args__ = (
+        CheckConstraint("glasses >= 0 AND glasses <= 30", name="ck_water_glasses"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    date: Mapped[dt.date] = mapped_column(unique=True, index=True)
+    glasses: Mapped[int] = mapped_column(default=0)
+
+    @classmethod
+    def add_glasses(cls, amount: int = 1, *, on_date: dt.date | None = None) -> "WaterLog":
+        """Upsert today's row, clamping the total to the valid range."""
+        day = on_date or dt.datetime.utcnow().date()  # UTC day, matching MealLog.ts
+        row = db.session.execute(
+            db.select(cls).where(cls.date == day)
+        ).scalar_one_or_none()
+        if row is None:
+            row = cls(date=day, glasses=0)
+            db.session.add(row)
+        row.glasses = max(0, min(30, row.glasses + amount))
+        return row
+
+    def to_dict(self) -> dict:
+        return {"date": self.date.isoformat(), "glasses": self.glasses}

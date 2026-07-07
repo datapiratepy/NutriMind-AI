@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Profile{% endblock %}
+{% block page %}
+<div style="max-width:44rem" class="mx-auto">
+  <h1 class="h4 mb-1">Your profile</h1>
+  <p class="text-2 mb-3">Powers deterministic targets, BMI tracking and
+    personalized agent answers. Stored locally in SQLite.</p>
+
+  <div class="d-flex align-items-center gap-2 mb-3" aria-hidden="true">
+    <span class="nm-step-dot active" data-dot="1">1</span><span class="text-2">Basics</span>
+    <span class="flex-grow-1 border-top" style="border-color:var(--nm-border)!important"></span>
+    <span class="nm-step-dot" data-dot="2">2</span><span class="text-2">Body</span>
+    <span class="flex-grow-1 border-top" style="border-color:var(--nm-border)!important"></span>
+    <span class="nm-step-dot" data-dot="3">3</span><span class="text-2">Preferences</span>
+  </div>
+
+  <form id="profile-form" class="nm-card p-3 p-lg-4" novalidate>
+    <fieldset data-step="1">
+      <div class="mb-3">
+        <label class="form-label" for="pf-name">Name</label>
+        <input class="form-control" id="pf-name" name="name" required maxlength="80">
+      </div>
+      <div class="row g-3">
+        <div class="col-6">
+          <label class="form-label" for="pf-age">Age</label>
+          <input class="form-control" id="pf-age" name="age" type="number" min="1"
+                 max="120" required>
+        </div>
+        <div class="col-6">
+          <label class="form-label" for="pf-gender">Gender</label>
+          <select class="form-select" id="pf-gender" name="gender" required>
+            <option value="">Choose…</option><option value="male">Male</option>
+            <option value="female">Female</option><option value="other">Other</option>
+          </select>
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset data-step="2" class="d-none">
+      <div class="row g-3">
+        <div class="col-6">
+          <label class="form-label" for="pf-height">Height (cm)</label>
+          <input class="form-control" id="pf-height" name="height_cm" type="number"
+                 min="50" max="272" step="0.5" required>
+        </div>
+        <div class="col-6">
+          <label class="form-label" for="pf-weight">Weight (kg)</label>
+          <input class="form-control" id="pf-weight" name="weight_kg" type="number"
+                 min="20" max="350" step="0.1" required>
+        </div>
+      </div>
+      <div class="alert mt-3 mb-0 py-2 nm-card" id="pf-bmi-live" aria-live="polite">
+        <i class="bi bi-calculator me-1"></i>
+        <span class="text-2">Enter height and weight for a live BMI preview.</span>
+      </div>
+      <div class="mt-3">
+        <label class="form-label" for="pf-activity">Activity level</label>
+        <select class="form-select" id="pf-activity" name="activity_level" required>
+          <option value="">Choose…</option>
+          <option value="sedentary">Sedentary — desk work, little exercise</option>
+          <option value="light">Light — exercise 1-3 days/week</option>
+          <option value="moderate">Moderate — exercise 3-5 days/week</option>
+          <option value="active">Active — exercise 6-7 days/week</option>
+          <option value="very_active">Very active — physical job or 2x training</option>
+        </select>
+      </div>
+    </fieldset>
+
+    <fieldset data-step="3" class="d-none">
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label" for="pf-diet">Diet preference</label>
+          <select class="form-select" id="pf-diet" name="food_preference" required>
+            <option value="">Choose…</option>
+            <option value="vegetarian">Vegetarian</option>
+            <option value="non_vegetarian">Non-vegetarian</option>
+            <option value="vegan">Vegan</option>
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="pf-goal">Weight goal</label>
+          <select class="form-select" id="pf-goal" name="weight_goal" required>
+            <option value="maintain">Maintain</option>
+            <option value="lose">Lose weight</option>
+            <option value="gain">Gain weight</option>
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="pf-conditions">Medical conditions
+            <span class="text-2">(comma-separated, optional)</span></label>
+          <input class="form-control" id="pf-conditions" placeholder="e.g. diabetes">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="pf-allergies">Allergies
+            <span class="text-2">(comma-separated, optional)</span></label>
+          <input class="form-control" id="pf-allergies" placeholder="e.g. peanuts">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="pf-country">Country (optional)</label>
+          <input class="form-control" id="pf-country" maxlength="60" placeholder="India">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="pf-calorie">Daily calorie goal
+            <span class="text-2">(optional override)</span></label>
+          <input class="form-control" id="pf-calorie" type="number" min="800" max="6000"
+                 placeholder="computed automatically if empty">
+        </div>
+      </div>
+    </fieldset>
+
+    <div class="d-flex justify-content-between mt-4">
+      <button type="button" class="btn btn-outline-secondary d-none" id="pf-back">
+        <i class="bi bi-arrow-left me-1"></i>Back</button>
+      <button type="button" class="btn btn-primary ms-auto" id="pf-next">
+        Next<i class="bi bi-arrow-right ms-1"></i></button>
+      <button type="submit" class="btn btn-success ms-auto d-none" id="pf-save">
+        <i class="bi bi-check-lg me-1"></i>Save profile</button>
+    </div>
+  </form>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/profile.js') }}"></script>
+{% endblock %}

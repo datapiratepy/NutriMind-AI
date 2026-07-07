@@ -1,0 +1,19 @@
+{# Server-side variant of the agent badge for history views.
+   Usage: include with `message` (ChatMessage.to_dict()). The chat page builds
+   the same badges client-side from live SSE metadata (js/chat.js). #}
+{% set labels = {"coordinator": "Coordinator", "knowledge_agent": "Knowledge Agent",
+                 "meal_planner": "Meal Planner", "meal_analyzer": "Meal Analyzer",
+                 "health_advisor": "Health Advisor"} %}
+{% if message.agent %}
+<span class="nm-badge nm-badge-accent"><i class="bi bi-robot"></i>
+  {{ labels.get(message.agent, message.agent) }}</span>
+{% endif %}
+{% if message.rag_used %}
+<span class="nm-badge nm-badge-green"><i class="bi bi-patch-check"></i> Grounded</span>
+{% elif message.agent %}
+<span class="nm-badge"><i class="bi bi-lightbulb"></i> General knowledge</span>
+{% endif %}
+{% if message.sources %}
+<span class="nm-badge"><i class="bi bi-file-earmark-text"></i>
+  {{ message.sources | length }} source{{ "s" if message.sources | length != 1 }}</span>
+{% endif %}
