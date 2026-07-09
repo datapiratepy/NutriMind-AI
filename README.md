@@ -6,8 +6,6 @@
 ![coverage](https://img.shields.io/badge/coverage-88%25-brightgreen)
 ![python](https://img.shields.io/badge/python-3.11+-blue)
 ![license](https://img.shields.io/badge/license-MIT-lightgrey)
-<!-- After pushing, replace the tests badge with the live CI badge:
-![CI](https://github.com/<user>/nutrimind-ai/actions/workflows/ci.yml/badge.svg) -->
 
 NutriMind AI is a multi-agent nutrition assistant built for the IBM SkillsBuild +
 Edunet Foundation internship. A Coordinator agent routes every request to one of
@@ -19,14 +17,8 @@ targets, health score — is computed deterministically in Python, never by the 
 > functional demo mode; with an IBM Cloud Lite account it uses live Granite
 > models through the official watsonx.ai SDK.
 
-## Demo
-
-<!-- Optional: 30-second demo GIF (docs/SCREENSHOT_CHECKLIST.md) -->
-<!-- ![Demo](docs/screenshots/demo.gif) -->
-
 ## Screenshots
 
-<!-- Add after first local run: -->
 | Chat with agent metadata | Dashboard | Knowledge base |
 |---|---|---|
 | ![Chat](docs/screenshots/chat.png) | ![Dashboard](docs/screenshots/dashboard.png) | ![Knowledge](docs/screenshots/knowledge.png) |
@@ -80,16 +72,28 @@ Deep dives: [ARCHITECTURE.md](docs/ARCHITECTURE.md) ·
 ## Getting started
 
 ```bash
-git clone <your-repo-url> nutrimind-ai
-cd nutrimind-ai
-python -m venv .venv && .venv\Scripts\activate    # Windows (source .venv/bin/activate on Unix)
-pip install -r requirements.txt
-python run.py                                      # → http://127.0.0.1:5000 (demo mode)
-```
+git clone https://github.com/datapiratepy/NutriMind-AI.git
+cd NutriMind-AI
 
-That's it — the app boots in **demo mode** with deterministic AI responses and
-a fully working RAG pipeline (hash embeddings), so every feature is
-demonstrable without credentials.
+# Create a virtual environment
+python -m venv .venv
+
+# Activate it
+# Windows
+.venv\Scripts\activate
+
+# Linux/macOS
+# source .venv/bin/activate
+
+pip install -r requirements.txt
+
+python run.py
+```
+Open **http://127.0.0.1:5000** in your browser.
+
+By default, NutriMind AI starts in **Demo Mode**, providing deterministic AI responses and a fully functional RAG pipeline (using hash embeddings) so that every feature can be explored without IBM credentials.
+
+To enable **IBM Live Mode** with Granite foundation models, follow the instructions in **docs/IBM_SETUP.md**.
 
 ### IBM Live mode
 
