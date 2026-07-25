@@ -1,17 +1,27 @@
 # NutriMind AI
 
-**AI-Powered Nutrition Assistant · IBM watsonx.ai · Granite · RAG · Multi-Agent**
+**AI-Powered Nutrition Assistant · IBM watsonx.ai · Granite · RAG · Specialist Agents with Deterministic Routing**
 
 ![tests](https://img.shields.io/badge/tests-156%20passed-brightgreen)
 ![coverage](https://img.shields.io/badge/coverage-88%25-brightgreen)
 ![python](https://img.shields.io/badge/python-3.11+-blue)
 ![license](https://img.shields.io/badge/license-MIT-lightgrey)
 
-NutriMind AI is a multi-agent nutrition assistant built for the IBM SkillsBuild +
-Edunet Foundation internship. A Coordinator agent routes every request to one of
-four specialized agents; factual answers are grounded in your own nutrition PDFs
+NutriMind AI is a nutrition assistant built for the IBM SkillsBuild +
+Edunet Foundation internship. A Coordinator routes every request to one of
+four specialist agents; factual answers are grounded in your own nutrition PDFs
 with page-level citations; and every number the app shows — calories, BMI, macro
 targets, health score — is computed deterministically in Python, never by the LLM.
+
+> **On the word "agent."** Each of the four specialists is an agent in the sense
+> that it encapsulates a role, its own version-controlled system prompt, and its own
+> tools, and streams a typed event protocol. Routing between them is **deterministic
+> rules first**, with a Granite JSON classification step only for messages no rule
+> matches. There is **no autonomous planning loop** — no ReAct-style
+> reason/act/observe cycle, no self-directed tool selection, no inter-agent
+> negotiation. The accurate description is *specialist agents with deterministic
+> routing and an LLM classification fallback*. See [Routing](#routing-what-selects-an-agent)
+> below and [docs/AGENTS.md](docs/AGENTS.md).
 
 > **Runs with zero setup.** Without IBM credentials the app starts in a fully
 > functional demo mode; with an IBM Cloud Lite account it uses live Granite
@@ -32,7 +42,8 @@ response shows which agent answered, the routing reason, and the exact tools
 that ran.
 
 **RAG with honest grounding** — upload nutrition PDFs; they are chunked
-(page-bounded, overlapping), embedded, and indexed in ChromaDB. Answers above
+(page-bounded, overlapping: 800 chars with 120-char overlap), embedded, and indexed
+in ChromaDB (cosine, top-k 5, similarity threshold 0.35). Answers above
 the similarity threshold cite sources by filename and page; anything else is
 visibly labeled *general knowledge*. No invented evidence, ever.
 
@@ -91,9 +102,60 @@ python run.py
 ```
 Open **http://127.0.0.1:5000** in your browser.
 
-By default, NutriMind AI starts in **Demo Mode**, providing deterministic AI responses and a fully functional RAG pipeline (using hash embeddings) so that every feature can be explored without IBM credentials.
+By default, NutriMind AI starts in **Demo Mode**, providing deterministic AI responses and a fully functional RAG pipeline so that every feature can be explored without IBM credentials.
 
 To enable **IBM Live Mode** with Granite foundation models, follow the instructions in **docs/IBM_SETUP.md**.
+
+### Routing — what selects an agent
+
+`Coordinator.route()` (`nutrimind/agents/coordinator.py`) has exactly two stages:
+
+1. **Deterministic rules — 0 tokens.** An ordered table of six regex rules; first
+   match wins. Two of them (`Small Talk`, `BMI Check`) the Coordinator answers
+   *itself*, with no LLM call at all — BMI is arithmetic, so it is computed in
+   Python.
+2. **Granite JSON classification — only if no rule matched.** The message goes to
+   Granite with a strict-JSON prompt at `temperature=0.0`, `max_tokens=80`; the
+   returned agent id is validated against the allow-list. Any failure falls back to
+   the default agent — routing never raises.
+
+**In demo mode stage 2 is skipped entirely** (the demo backend cannot classify
+arbitrary text), so unmatched messages fall through to the Knowledge Agent with
+`method: "default"` and a reason string that says so.
+
+Every decision carries `intent`, `agent`, `reason` and `method`
+(`rules` | `llm` | `default`), returned in the API response and rendered in the UI
+badge — so the routing path is always visible, never inferred.
+
+### Embedding provider matrix
+
+Three providers, resolved by `EMBEDDINGS_PROVIDER` (`nutrimind/retrieval/embeddings.py`):
+
+| Provider | Model | Dim | Semantic? | Selected when |
+|---|---|---|---|---|
+| `watsonx` | `ibm/granite-embedding-278m-multilingual` | 768 | yes | `EMBEDDINGS_PROVIDER=watsonx`, or `auto` **with** IBM credentials |
+| `local` | `sentence-transformers/all-MiniLM-L6-v2` | 384 | yes | `EMBEDDINGS_PROVIDER=local`, or `auto` with no credentials **and** `sentence-transformers` installed |
+| `hash` | SHA-256 → seeded RNG → L2-normalised vector | 384 | **no** | `auto`, no credentials, `sentence-transformers` **not** installed |
+
+`sentence-transformers` is **commented out** in `requirements.txt` (it pulls
+PyTorch), so a default install with no IBM credentials resolves to **`hash`**.
+
+**Be clear about what the hash provider is:** it produces deterministic
+pseudo-vectors that are *semantically meaningless*. Two passages about protein get
+unrelated vectors. It exists so the full pipeline — ingest → chunk → embed → index →
+search → threshold → cite — stays mechanically functional and testable with zero
+credentials and zero heavy dependencies. It is never selected silently: resolution
+logs a warning, and the active provider is reported at `/api/system/info` and in
+every chat response's `meta.embedding_provider`.
+
+Each provider gets **its own Chroma collection** (`kb_watsonx`, `kb_local`,
+`kb_hash`) because the vector spaces are not comparable — a 384-dim hash vector must
+never be searched against 768-dim Granite vectors.
+
+**What does *not* change between modes:** chunking, the vector store, the
+similarity threshold, citation construction, the SSE event protocol, and every
+nutrition calculation (BMR/TDEE, macros, BMI, health score) — those are pure Python
+and identical in both modes.
 
 ### IBM Live mode
 
@@ -124,6 +186,30 @@ pytest tests/ --cov=nutrimind --cov-report=term    # ~88% coverage
 The suite runs entirely in demo mode — no API keys required — and covers the
 deterministic services, models, RAG pipeline, agents, routing rules, chat SSE
 protocol and PDF export. CI runs on every push (GitHub Actions).
+
+**Verified 2026-07-25** (Windows, Python 3.14.6, full dependencies installed):
+**156 collected, 156 passed, 0 failed — 88% coverage** (2,293 statements, 270 missed),
+287 s. 118 test functions; `@pytest.mark.parametrize` expands them to 156 cases —
+105 unit tests and 51 integration tests across 19 files.
+
+**Test isolation:** the suite must never pick up a real `.env`. `load_settings()`
+calls `load_dotenv(..., override=False)`, which protects variables already present in
+the environment but *repopulates ones a test deleted* — so tests that clear
+`WATSONX_APIKEY`/`WATSONX_PROJECT_ID` to exercise the credential-free path would
+otherwise get live credentials back and resolve to the watsonx provider. A
+session-scoped autouse fixture in `tests/conftest.py` neutralises the `.env` read and
+clears the credential variables, so the suite behaves identically in CI, in a fresh
+clone, and on a configured developer machine.
+
+**Intentionally uncovered:** `watsonx_client.py` network paths (34% — the pure logic
+is tested; live calls are exercised by `scripts/check_watsonx.py` against real
+credentials), the optional `sentence-transformers` provider, and the live-mode
+branches of the LLM factory. There is no coverage threshold gate in CI.
+
+> Note: `chromadb` is required to run the suite — 33 of the 156 tests construct a
+> `VectorStore`. Without it those tests fail with
+> `ConfigurationError: ChromaDB is not installed`; the remaining 123 pass and
+> coverage lands at 71%. Install `requirements.txt` in full before running.
 
 ## Folder structure
 
