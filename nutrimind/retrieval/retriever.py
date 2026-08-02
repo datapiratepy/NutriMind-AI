@@ -38,7 +38,7 @@ class RetrievalResult:
         return citations
 
     def context_text(self) -> str:
-        """Numbered passages block for grounded prompts (Phase 6)."""
+        """Numbered passages block for grounded prompts."""
         return "\n\n".join(
             f"[{index}] (from {c.filename}, page {c.page})\n{c.text}"
             for index, c in enumerate(self.chunks, start=1)

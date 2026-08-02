@@ -1,0 +1,18 @@
+# NutriMind AI — development and CI tooling.
+#
+# Separate from requirements.txt so a production install never pulls a test
+# runner, a linter or their dependency trees into the deployed environment.
+#
+#     pip install -r requirements.txt -r requirements-dev.txt
+
+-r requirements.txt
+
+# Tests
+pytest==9.1.1
+pytest-cov==7.1.0
+
+# Lint (config in pyproject.toml)
+ruff==0.16.1
+
+# Dependency vulnerability scanning
+pip-audit==2.10.1

@@ -62,7 +62,7 @@ class MealLog(db.Model):
 
 
 class MealPlan(db.Model):
-    """A saved, generated meal plan (created by the Meal Planner agent, Phase 6)."""
+    """A saved, generated meal plan (created by the Meal Planner agent)."""
 
     __tablename__ = "meal_plans"
 

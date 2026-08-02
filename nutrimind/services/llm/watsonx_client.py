@@ -38,6 +38,17 @@ logger = logging.getLogger(__name__)
 _EMBED_PARAMS = {"truncate_input_tokens": 512}
 
 
+def _mentions(text: str, *needles: str) -> bool:
+    """True when any needle appears in ``text``.
+
+    Keeps the matcher table below readable and, more importantly, makes the
+    boolean grouping explicit — the original chains mixed ``or`` and ``and``
+    without parentheses, which relied on the reader knowing Python's operator
+    precedence to see that the intent was ``... or (a and b)``.
+    """
+    return any(needle in text for needle in needles)
+
+
 def translate_watsonx_error(exc: Exception) -> WatsonxError:
     """Map an SDK/network exception onto NutriMind's typed error hierarchy."""
     if isinstance(exc, WatsonxError):
@@ -45,34 +56,36 @@ def translate_watsonx_error(exc: Exception) -> WatsonxError:
 
     text = str(exc).lower()
 
-    if "401" in text or "unauthorized" in text or "invalid api key" in text or "iam" in text and "token" in text:
+    if _mentions(text, "401", "unauthorized", "invalid api key") or (
+            "iam" in text and "token" in text):
         return WatsonxAuthError(
             "IBM Cloud rejected the API key (authentication failed).",
             hint="Re-check WATSONX_APIKEY in .env — see docs/IBM_SETUP.md §4.",
         )
-    if "403" in text or "forbidden" in text or "not authorized" in text:
+    if _mentions(text, "403", "forbidden", "not authorized"):
         return WatsonxAuthError(
             "The API key is valid but has no access to this resource (403).",
             hint="Ensure the key belongs to the account that owns the watsonx.ai project.",
         )
-    if "project" in text and ("404" in text or "not found" in text or "does not exist" in text):
+    if "project" in text and _mentions(text, "404", "not found", "does not exist"):
         return WatsonxProjectError(
             "The watsonx.ai project was not found.",
             hint="Verify WATSONX_PROJECT_ID and that watsonx.ai Runtime is "
                  "associated with the project (docs/IBM_SETUP.md §3, common mistake #1).",
         )
-    if "model" in text and ("not supported" in text or "not found" in text or "unavailable" in text or "invalid" in text):
+    if "model" in text and _mentions(text, "not supported", "not found",
+                                     "unavailable", "invalid"):
         return WatsonxModelError(
             "The configured model ID is not available on this instance/region.",
             hint="Run 'python scripts/check_watsonx.py' to list the models you can use.",
         )
-    if "429" in text or "quota" in text or "rate limit" in text or "too many requests" in text:
+    if _mentions(text, "429", "quota", "rate limit", "too many requests"):
         return WatsonxQuotaError(
             "watsonx.ai rate/usage limit reached (HTTP 429).",
             hint="The Lite plan includes a monthly token allowance that resets "
                  "each month. Try again later or switch APP_MODE=demo.",
         )
-    if "timeout" in text or "timed out" in text or "connection" in text or "name resolution" in text or "ssl" in text:
+    if _mentions(text, "timeout", "timed out", "connection", "name resolution", "ssl"):
         return WatsonxConnectionError(
             "Could not reach IBM watsonx.ai (network problem or timeout).",
             hint="Check your internet connection and that WATSONX_URL matches "

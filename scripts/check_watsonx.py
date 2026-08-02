@@ -35,7 +35,6 @@ from nutrimind.config import (  # noqa: E402
 )
 from nutrimind.exceptions import NutriMindError, WatsonxError  # noqa: E402
 
-
 # ---------------------------------------------------------------------------
 # Color-coded reporting
 # ---------------------------------------------------------------------------

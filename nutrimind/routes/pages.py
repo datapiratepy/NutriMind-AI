@@ -1,4 +1,4 @@
-"""Server-rendered page routes (templates are implemented in Phase 7)."""
+"""Server-rendered page routes; each renders a template that extends base.html."""
 
 from __future__ import annotations
 

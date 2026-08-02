@@ -270,11 +270,11 @@ class FoodTable:
 
         :param items: validated ``[{"name": str, "quantity"?: float, "grams"?: float}]``.
         :returns: ``{"items": [...], "totals": {...}, "unmatched": [...]}`` —
-            the LLM (Phase 6) interprets these numbers, never invents them.
+            the LLM interprets these numbers, never invents them.
         """
         matched: list[dict] = []
         unmatched: list[str] = []
-        totals = {f: 0.0 for f in _NUTRIENT_FIELDS}
+        totals = dict.fromkeys(_NUTRIENT_FIELDS, 0.0)
         for item in items:
             hits = self.search(item["name"], limit=1)
             if not hits:

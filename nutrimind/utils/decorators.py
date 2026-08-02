@@ -2,7 +2,7 @@
 
 * ``init_request_middleware(app)`` — request IDs, access logging, timing.
 * ``rate_limit(...)`` — tiny in-memory limiter (single-process dev server);
-  applied to token-consuming endpoints such as ``/api/chat`` in Phase 6.
+  applied to token-consuming endpoints such as ``/api/chat``.
 """
 
 from __future__ import annotations

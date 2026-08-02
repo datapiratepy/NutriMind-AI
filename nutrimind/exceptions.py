@@ -2,7 +2,7 @@
 
 Every exception carries a short, user-friendly ``message``, an optional
 ``hint`` with a concrete next step, and an ``http_status`` used by the JSON
-error handlers (added in Phase 4). Route handlers and CLI tools render these
+error handlers. Route handlers and CLI tools render these
 directly instead of leaking stack traces (ARCHITECTURE.md §9).
 
 This module is deliberately dependency-free: it never imports the IBM SDK.

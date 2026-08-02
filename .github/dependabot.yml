@@ -1,0 +1,25 @@
+# Pinned dependencies only stay safe if something proposes the upgrades.
+# Dependabot opens a PR per update; CI decides whether it is safe to take.
+version: 2
+
+updates:
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      # One PR for routine patch/minor bumps keeps the review load sane.
+      # Majors stay separate because they deserve individual attention.
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "deps"
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "ci"

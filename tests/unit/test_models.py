@@ -7,7 +7,13 @@ from sqlalchemy.exc import IntegrityError
 
 from nutrimind.extensions import db
 from nutrimind.models import (
-    BMIRecord, ChatMessage, Document, MealLog, MealPlan, UserProfile, WaterLog,
+    BMIRecord,
+    ChatMessage,
+    Document,
+    MealLog,
+    MealPlan,
+    UserProfile,
+    WaterLog,
 )
 
 
@@ -76,6 +82,25 @@ def test_document_status_transitions(app):
         assert doc.to_dict()["status"] == "indexed" and doc.chunk_count == 48
         doc.mark_failed("boom " * 200)
         assert doc.status == "failed" and len(doc.error) <= 500
+
+
+def test_document_stored_name_fits_seeded_paths(app):
+    """Seeded files store a repo-relative path, which can exceed the old 64 chars.
+
+    SQLite ignores VARCHAR limits, so an over-long value passes here regardless;
+    this test exists to pin the declared column width, which is what Postgres
+    will actually enforce after the database migration.
+    """
+    assert Document.__table__.c.stored_name.type.length >= 255
+
+    long_path = f"knowledge_base/{'icmr-nin-dietary-guidelines-for-indians-' * 4}.pdf"
+    assert len(long_path) > 64
+    with app.app_context():
+        doc = Document(filename="guidelines.pdf", stored_name=long_path,
+                       sha256="a" * 64)
+        db.session.add(doc)
+        db.session.commit()
+        assert doc.stored_name == long_path
 
 
 def test_water_upsert_and_clamping(app):

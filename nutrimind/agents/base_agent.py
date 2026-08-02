@@ -10,6 +10,10 @@ streaming and blocking JSON (docs/AGENTS.md "Streaming protocol"):
 The ``meta`` dict is the UI-metadata contract (agent, grounded,
 response_source, provider, citations, chunks, tools_used, timing, tokens) —
 the frontend renders badges from it verbatim, never inferring.
+
+``embedding_provider`` reports what actually ran this turn: a provider name
+when retrieval happened, ``"not_used"`` when the turn needed no retrieval, and
+``"unavailable"`` when the vector store could not be opened.
 """
 
 from __future__ import annotations

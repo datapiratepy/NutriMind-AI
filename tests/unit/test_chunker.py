@@ -2,7 +2,7 @@
 
 from nutrimind.retrieval.chunker import chunk_pages, clean_page_text
 
-CHUNK = dict(chunk_size=200, overlap=40)
+CHUNK = {"chunk_size": 200, "overlap": 40}
 
 
 def _page(sentences: int, prefix: str = "Sentence") -> str:
@@ -24,7 +24,9 @@ def test_chunks_never_cross_pages():
 
 def test_overlap_carries_boundary_text():
     chunks = chunk_pages([_page(40)], **CHUNK)
-    for previous, current in zip(chunks, chunks[1:]):
+    # strict=False is intentional: this is pairwise iteration, so the second
+    # sequence is deliberately one shorter than the first.
+    for previous, current in zip(chunks, chunks[1:], strict=False):
         if previous.page != current.page:
             continue
         tail_words = previous.text.split()[-3:]

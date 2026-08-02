@@ -4,11 +4,20 @@ All secrets and IBM-specific values come from ``.env`` (loaded via
 python-dotenv) or real environment variables — never from code. The settings
 object is immutable, validated fail-fast at startup, and safe to construct
 without any credentials (the app then resolves to demo mode).
+
+Two safety-relevant defaults:
+
+* ``FLASK_DEBUG`` defaults to **off**. The interactive debugger is a remote
+  code execution primitive, and defaults are what a rushed deploy inherits.
+* When ``FLASK_SECRET_KEY`` is unset, a random key is generated once and
+  persisted to ``instance/secret_key`` (see :func:`_resolve_secret_key`), so
+  the app never falls back to the publicly-known placeholder value.
 """
 
 from __future__ import annotations
 
 import os
+import secrets
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -33,7 +42,11 @@ DEFAULT_EMBEDDING_MODEL_ID = "ibm/granite-embedding-278m-multilingual"
 
 _VALID_APP_MODES = ("live", "demo", "auto")
 _VALID_EMBEDDING_PROVIDERS = ("watsonx", "local", "auto")
+
+#: Sentinel meaning "FLASK_SECRET_KEY was never configured". Ships in .env.example.
 _DEFAULT_SECRET = "change-me-generate-a-random-value"
+#: Auto-generated key lives here so it survives restarts and is shared by workers.
+_SECRET_KEY_FILENAME = "secret_key"
 
 
 def _env(name: str, default: str = "") -> str:
@@ -57,6 +70,64 @@ def _env_bool(name: str, default: bool) -> bool:
     if value in ("0", "false", "no", "off"):
         return False
     return default
+
+
+def _read_key_file(path: Path) -> str:
+    """Contents of an existing key file, or ``""`` when absent/blank."""
+    return path.read_text(encoding="utf-8").strip() if path.is_file() else ""
+
+
+def _resolve_secret_key(raw: str, instance_dir: Path, *,
+                        allow_generation: bool) -> tuple[str, str]:
+    """Resolve the Flask secret key; generate a persistent one when unset.
+
+    Returns ``(key, source)`` where source is one of:
+
+    * ``"environment"`` — read from ``FLASK_SECRET_KEY`` (the production path)
+    * ``"generated"``   — read from or written to ``instance/secret_key``
+    * ``"ephemeral"``   — random, process-local, because the instance directory
+      is not writable; sessions do not survive a restart
+    * ``"placeholder"`` — unresolved (generation disabled); a fatal config error
+
+    Why generate at all: ``FLASK_DEBUG`` now defaults to off, and the old rule
+    made a placeholder key fatal whenever debug was off. Applying that rule
+    unchanged would break ``git clone && python run.py``, which is a documented
+    and genuinely useful property of this project. Persisting a real random key
+    keeps zero-setup working *and* guarantees no deployment ever runs on the
+    publicly-known placeholder — safe in both directions instead of trading one
+    failure for another.
+    """
+    if raw and raw != _DEFAULT_SECRET:
+        return raw, "environment"
+    if not allow_generation:
+        return _DEFAULT_SECRET, "placeholder"
+
+    key_path = instance_dir / _SECRET_KEY_FILENAME
+    try:
+        existing = _read_key_file(key_path)
+        if existing:
+            return existing, "generated"
+
+        instance_dir.mkdir(parents=True, exist_ok=True)
+        generated = secrets.token_hex(32)
+        try:
+            # Exclusive create, not write_text: when several workers boot at the
+            # same moment exactly one wins, and the losers adopt its key. Plain
+            # writes would leave each worker signing sessions with a different
+            # key, so cookies issued by one would be rejected by the others.
+            with key_path.open("x", encoding="utf-8") as handle:
+                handle.write(generated)
+        except FileExistsError:
+            return _read_key_file(key_path) or generated, "generated"
+        try:
+            key_path.chmod(0o600)
+        except OSError:  # pragma: no cover — filesystems without POSIX modes
+            pass
+        return generated, "generated"
+    except OSError:
+        # Read-only instance directory (some container images). Boot anyway with
+        # a process-local key; validate_settings warns about the consequence.
+        return secrets.token_hex(32), "ephemeral"
 
 
 @dataclass(frozen=True)
@@ -111,6 +182,8 @@ class Settings:
     app_mode: str              # requested: live | demo | auto
     embeddings_provider: str   # watsonx | local | auto
     secret_key: str
+    #: where secret_key came from: environment | generated | ephemeral | placeholder
+    secret_key_source: str
     debug: bool
     max_upload_mb: int
     log_level: str
@@ -148,13 +221,20 @@ def load_settings(dotenv_path: Path | None = None, *, ensure_dirs: bool = True) 
 
     instance_dir = (Path(_env("NUTRIMIND_INSTANCE_DIR"))
                     if _env("NUTRIMIND_INSTANCE_DIR") else INSTANCE_DIR)
+    secret_key, secret_key_source = _resolve_secret_key(
+        _env("FLASK_SECRET_KEY", _DEFAULT_SECRET), instance_dir,
+        allow_generation=ensure_dirs)
     settings = Settings(
         watsonx=watsonx,
         rag=rag,
         app_mode=_env("APP_MODE", "auto").lower(),
         embeddings_provider=_env("EMBEDDINGS_PROVIDER", "auto").lower(),
-        secret_key=_env("FLASK_SECRET_KEY", _DEFAULT_SECRET),
-        debug=_env_bool("FLASK_DEBUG", True),
+        secret_key=secret_key,
+        secret_key_source=secret_key_source,
+        # Off by default: production must never expose the interactive debugger,
+        # and defaults are what get used when a deploy is rushed. Opt in locally
+        # with FLASK_DEBUG=1.
+        debug=_env_bool("FLASK_DEBUG", False),
         max_upload_mb=_env_int("MAX_UPLOAD_MB", 15),
         log_level=_env("LOG_LEVEL", "INFO").upper(),
         database_uri=_env(
@@ -241,10 +321,24 @@ def validate_settings(settings: Settings) -> tuple[list[str], list[str]]:
     if not (0.0 <= rag.similarity_threshold <= 1.0):
         errors.append(f"RAG_SIMILARITY_THRESHOLD must be 0-1, got {rag.similarity_threshold}.")
 
-    if settings.secret_key == _DEFAULT_SECRET:
-        (warnings if settings.debug else errors).append(
-            "FLASK_SECRET_KEY still has the placeholder value. Generate one with: "
-            'python -c "import secrets; print(secrets.token_hex(32))"'
+    if settings.secret_key_source == "placeholder":
+        errors.append(
+            "FLASK_SECRET_KEY is unset and no key could be generated. Set it "
+            'explicitly: python -c "import secrets; print(secrets.token_hex(32))"'
+        )
+    elif settings.secret_key_source == "generated":
+        warnings.append(
+            "FLASK_SECRET_KEY was not set, so a random key was generated and stored "
+            f"in {settings.instance_dir / _SECRET_KEY_FILENAME}. Sessions survive "
+            "restarts, but set FLASK_SECRET_KEY explicitly in production so the key "
+            "is managed alongside your other secrets and can be rotated."
+        )
+    elif settings.secret_key_source == "ephemeral":
+        warnings.append(
+            "FLASK_SECRET_KEY is unset and the instance directory is not writable, "
+            "so a process-local key is in use. Every restart invalidates all "
+            "sessions and multiple workers will not share sessions. Set "
+            "FLASK_SECRET_KEY explicitly."
         )
 
     return errors, warnings

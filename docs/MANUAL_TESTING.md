@@ -1,7 +1,8 @@
 # Manual Testing Guide
 
 Step-by-step verification for evaluators and pre-release checks.
-Prerequisite: `pip install -r requirements.txt`. Each section lists the
+Prerequisite: `pip install -r requirements.txt` (add `-r requirements-dev.txt`
+to run the automated suite too). Each section lists the
 steps and the **expected result**.
 
 ## 1. Demo mode boot (no credentials)

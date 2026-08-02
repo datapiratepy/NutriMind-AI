@@ -98,7 +98,7 @@ def _register_error_handlers(app: Flask) -> None:
         return render_template("errors/500.html", message=exc.user_message), exc.http_status
 
     @app.errorhandler(SQLAlchemyError)
-    def _handle_database_error(exc: SQLAlchemyError):
+    def _handle_database_error(_exc: SQLAlchemyError):
         logger.exception("database error")
         db.session.rollback()
         if _wants_json():

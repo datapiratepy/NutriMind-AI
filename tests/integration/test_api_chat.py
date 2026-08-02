@@ -117,9 +117,27 @@ def test_chat_streaming_persists_history(client):
 # -- system endpoints keep reporting correctly ---------------------------------
 
 def test_health_reports_demo_mode(client):
-    body = client.get("/api/health").get_json()
+    response = client.get("/api/health")
+    assert response.status_code == 200
+    body = response.get_json()
     assert body["status"] == "ok" and body["mode"] == "demo"
     assert body["database"] == "ok"
+
+
+def test_health_returns_503_when_database_is_unusable(client, monkeypatch):
+    """A degraded app must say so in the status code, not only in the body.
+
+    Load balancers and uptime monitors read the code; returning 200 with
+    ``"status": "degraded"`` makes an app on a dead database look healthy to
+    everything that is watching it.
+    """
+    monkeypatch.setattr("nutrimind.routes.system_api._database_status",
+                        lambda: "error")
+    response = client.get("/api/health")
+    assert response.status_code == 503
+    body = response.get_json()
+    assert body["status"] == "degraded"
+    assert body["database"] == "error"
 
 
 def test_system_info_diagnostics(client):

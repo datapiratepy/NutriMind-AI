@@ -10,19 +10,23 @@ The repository is scaffolded with placeholder files: every `.py` carries a docst
 
 ```
 nutrimind-ai/                        # repo root
-├── run.py                           # dev entry point: create_app() + run (Phase 4)
-├── requirements.txt                 # dependencies (exact pins locked in Phase 4)
+├── run.py                           # dev entry point: create_app() + run
+├── requirements.in                  # direct runtime deps, as intent (edit this)
+├── requirements.txt                 # runtime deps, pinned exactly (generated)
+├── requirements-dev.txt             # pytest / ruff / pip-audit — never deployed
+├── pyproject.toml                   # ruff + pytest configuration
 ├── .env.example                     # documented config template — committed
 ├── .gitignore                       # excludes .env, instance/, caches
 ├── LICENSE                          # MIT
-├── README.md                        # GitHub front page (completed Phase 10)
+├── README.md                        # GitHub front page
 │
 ├── docs/
-│   ├── ARCHITECTURE.md              # approved Phase 1 design
+│   ├── ARCHITECTURE.md              # system design and its reasoning
 │   ├── FOLDER_STRUCTURE.md          # this file
-│   ├── IBM_SETUP.md                 # Phase 3
-│   ├── INSTALLATION.md, DEPLOYMENT.md  # Phase 10
-│   └── screenshots/                 # README images (Phase 10)
+│   ├── IBM_SETUP.md                 # connecting live watsonx.ai
+│   ├── INSTALLATION.md, DEPLOYMENT.md  # running it locally / in production
+│   ├── archive/                     # internship submission material (provenance)
+│   └── screenshots/                 # README images
 │
 ├── nutrimind/                       # ← THE APPLICATION PACKAGE
 │   ├── __init__.py                  # create_app() app factory

@@ -48,7 +48,7 @@ class UserProfile(db.Model):
         return db.session.execute(db.select(cls).limit(1)).scalar_one_or_none()
 
     def summary_for_prompt(self) -> str:
-        """Compact one-line description injected into agent prompts (Phase 6)."""
+        """Compact one-line description injected into agent prompts."""
         conditions = ", ".join(self.medical_conditions) or "none"
         allergies = ", ".join(self.allergies) or "none"
         return (

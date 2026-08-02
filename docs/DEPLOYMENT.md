@@ -21,9 +21,16 @@ waitress-serve --host 127.0.0.1 --port 8000 --call nutrimind:create_app
 
 (gunicorn on Linux: `gunicorn -w 2 -b 127.0.0.1:8000 "nutrimind:create_app()"`.)
 
-Production `.env` changes: `FLASK_DEBUG=0` (this also *hard-fails* startup
-if `FLASK_SECRET_KEY` still has the placeholder value), a generated secret
-key, and `LOG_LEVEL=INFO`.
+Production `.env` changes: a generated `FLASK_SECRET_KEY` and `LOG_LEVEL=INFO`.
+`FLASK_DEBUG` already defaults to off, so there is nothing to remember to turn
+off — set it to `1` only on your own machine.
+
+Setting `FLASK_SECRET_KEY` explicitly is still the right thing to do in
+production, even though the app no longer refuses to start without it. If it is
+unset, a random key is generated once and stored in `instance/secret_key`; that
+is safe (it is never the placeholder value) but the key then lives outside your
+secret store, is not rotatable through your normal process, and is lost if the
+instance volume is ever recreated — which logs every user out.
 
 ## Reverse proxy + HTTPS
 

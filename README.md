@@ -2,9 +2,8 @@
 
 **AI-Powered Nutrition Assistant · IBM watsonx.ai · Granite · RAG · Specialist Agents with Deterministic Routing**
 
-![tests](https://img.shields.io/badge/tests-156%20passed-brightgreen)
-![coverage](https://img.shields.io/badge/coverage-88%25-brightgreen)
-![python](https://img.shields.io/badge/python-3.11+-blue)
+[![ci](https://github.com/datapiratepy/NutriMind-AI/actions/workflows/ci.yml/badge.svg)](https://github.com/datapiratepy/NutriMind-AI/actions/workflows/ci.yml)
+![python](https://img.shields.io/badge/python-3.13-blue)
 ![license](https://img.shields.io/badge/license-MIT-lightgrey)
 
 NutriMind AI is a nutrition assistant built for the IBM SkillsBuild +
@@ -179,18 +178,18 @@ All configuration is environment-driven (see [.env.example](.env.example)):
 ## Testing
 
 ```bash
-pytest tests/ -q                                   # 156 tests
+pip install -r requirements.txt -r requirements-dev.txt
+pytest tests/ -q                                   # 180 tests
 pytest tests/ --cov=nutrimind --cov-report=term    # ~88% coverage
+ruff check .                                       # lint, as CI runs it
 ```
 
 The suite runs entirely in demo mode — no API keys required — and covers the
 deterministic services, models, RAG pipeline, agents, routing rules, chat SSE
-protocol and PDF export. CI runs on every push (GitHub Actions).
+protocol, configuration defaults and PDF export.
 
-**Verified 2026-07-25** (Windows, Python 3.14.6, full dependencies installed):
-**156 collected, 156 passed, 0 failed — 88% coverage** (2,293 statements, 270 missed),
-287 s. 118 test functions; `@pytest.mark.parametrize` expands them to 156 cases —
-105 unit tests and 51 integration tests across 19 files.
+CI runs on every push (GitHub Actions): ruff, then the suite with a coverage
+floor, then an advisory `pip-audit` of the pinned dependencies.
 
 **Test isolation:** the suite must never pick up a real `.env`. `load_settings()`
 calls `load_dotenv(..., override=False)`, which protects variables already present in
@@ -201,15 +200,16 @@ session-scoped autouse fixture in `tests/conftest.py` neutralises the `.env` rea
 clears the credential variables, so the suite behaves identically in CI, in a fresh
 clone, and on a configured developer machine.
 
-**Intentionally uncovered:** `watsonx_client.py` network paths (34% — the pure logic
+**Intentionally uncovered:** `watsonx_client.py` network paths (the pure logic
 is tested; live calls are exercised by `scripts/check_watsonx.py` against real
 credentials), the optional `sentence-transformers` provider, and the live-mode
-branches of the LLM factory. There is no coverage threshold gate in CI.
+branches of the LLM factory. CI enforces a coverage floor of 87% — a ratchet
+against erosion rather than a target to chase.
 
-> Note: `chromadb` is required to run the suite — 33 of the 156 tests construct a
+> Note: `chromadb` is required to run the suite — roughly 30 tests construct a
 > `VectorStore`. Without it those tests fail with
-> `ConfigurationError: ChromaDB is not installed`; the remaining 123 pass and
-> coverage lands at 71%. Install `requirements.txt` in full before running.
+> `ConfigurationError: ChromaDB is not installed`. Install the full
+> `requirements.txt` before running.
 
 ## Folder structure
 
@@ -220,7 +220,7 @@ nutrimind/          application package
   retrieval/        chunker · embeddings · vector store · ingestion · retriever
   models/ routes/ prompts/ utils/ templates/ static/
 knowledge_base/     seed PDFs (indexed by scripts/seed_knowledge_base.py)
-instance/           runtime data (SQLite, uploads, ChromaDB) — git-ignored
+instance/           runtime data (SQLite, uploads, ChromaDB, secret_key) — git-ignored
 scripts/ tests/ docs/
 ```
 
@@ -228,7 +228,7 @@ Full map with rationale: [docs/FOLDER_STRUCTURE.md](docs/FOLDER_STRUCTURE.md)
 
 ## Technology stack
 
-Python 3.11+ · Flask 3 · SQLAlchemy 2 · **ibm-watsonx-ai** (Granite 4 chat +
+Python 3.13 (supported 3.11–3.14) · Flask 3 · SQLAlchemy 2 · **ibm-watsonx-ai** (Granite 4 chat +
 Granite embeddings) · ChromaDB · pypdf · ReportLab · Bootstrap 5.3 · vanilla
 JS (no build step) · pytest
 
@@ -236,12 +236,17 @@ JS (no build step) · pytest
 
 | Doc | Purpose |
 |---|---|
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design and the reasoning behind it |
+| [AGENTS.md](docs/AGENTS.md) | Agent contracts and the streaming event protocol |
+| [INSTALLATION.md](docs/INSTALLATION.md) | Local setup |
 | [IBM_SETUP.md](docs/IBM_SETUP.md) | Zero-to-connected IBM walkthrough |
+| [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Running it beyond the dev server |
+| [IMPLEMENTATION_NOTES.md](docs/IMPLEMENTATION_NOTES.md) | Decisions and trade-offs made during the build |
 | [MANUAL_TESTING.md](docs/MANUAL_TESTING.md) | Step-by-step verification guide |
-| [DEMO_GUIDE.md](docs/DEMO_GUIDE.md) | 5-7 minute evaluation demo script |
-| [INTERVIEW_GUIDE.md](docs/INTERVIEW_GUIDE.md) | Design-decision Q&A |
-| [SUBMISSION_CHECKLIST.md](docs/SUBMISSION_CHECKLIST.md) | Requirement → feature map |
 | [RELEASE_NOTES.md](docs/RELEASE_NOTES.md) | v1.0 summary, limitations, roadmap |
+
+Internship submission material (presentation, demo script, checklists) is kept
+for provenance in [docs/archive/](docs/archive/).
 
 ## Future improvements
 

@@ -61,7 +61,10 @@ def _build_request(message: str, session_id: str) -> AgentRequest:
                if m.role in ("user", "assistant")]
     return AgentRequest(
         message=message,
-        toolbox=Toolbox(get_rag_service(settings)),
+        # Factory, not an instance: the vector store is opened only if this turn
+        # actually retrieves, so a Chroma failure cannot break the routing-only
+        # and deterministic paths (small talk, BMI).
+        toolbox=Toolbox(lambda: get_rag_service(settings)),
         llm=get_llm_client(settings),
         profile=UserProfile.get_singleton(),
         history=history,

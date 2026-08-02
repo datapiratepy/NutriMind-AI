@@ -1,21 +1,52 @@
-name: tests
+name: ci
 
 on:
   push:
   pull_request:
 
+# A second push to the same branch cancels the first — no point paying for a
+# run whose result is already stale.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  pytest:
+  quality:
+    name: lint · tests · audit
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # Must match the version developers use locally and the deployment image.
+      # The supported range is 3.11-3.14, set by ibm-watsonx-ai's Requires-Python;
+      # 3.13 is the newest with broad, settled support across the whole tree.
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.13"
           cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
       - name: Install dependencies
-        run: pip install -r requirements.txt
-      - name: Run test suite (demo mode, no secrets required)
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      # Lint before tests: it is far cheaper, so a style or dead-code failure
+      # reports in seconds rather than after the whole suite has run.
+      - name: Lint (ruff)
+        run: ruff check .
+
+      # A ratchet against silent erosion, not a target to chase — that is how
+      # coverage always dies, one "I'll add the test later" at a time. Set just
+      # below the current 88% so rounding on an unrelated PR cannot block it;
+      # raise it when the real number moves up.
+      - name: Tests (demo mode, no secrets required)
         env:
           APP_MODE: demo
-        run: pytest tests/ -q --cov=nutrimind --cov-report=term
+        run: pytest tests/ -q --cov=nutrimind --cov-report=term --cov-fail-under=87
+
+      # Advisory: a new CVE disclosure is not our regression, and should not
+      # block an unrelated PR. It still has to be visible in the run summary.
+      - name: Dependency vulnerability audit
+        continue-on-error: true
+        run: pip-audit --requirement requirements.txt --requirement requirements-dev.txt

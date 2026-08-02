@@ -39,12 +39,19 @@ def _chroma_status(settings) -> dict | str:
 
 @system_api.get("/health")
 def health():
+    """Readiness probe: 200 when serving, 503 when a dependency is unusable.
+
+    The status code carries the signal, not just the body — load balancers and
+    uptime monitors read the code. Returning 200 with ``"status": "degraded"``
+    means an app on a dead database still looks healthy to everything watching it.
+    """
     settings = current_app.config["NUTRIMIND_SETTINGS"]
     llm = describe_llm(settings)
     database = _database_status()
-    status = "ok" if database == "ok" else "degraded"
-    return ok({"status": status, "mode": llm["mode"], "mode_detail": llm["detail"],
-               "database": database})
+    healthy = database == "ok"
+    return ok({"status": "ok" if healthy else "degraded", "mode": llm["mode"],
+               "mode_detail": llm["detail"], "database": database},
+              200 if healthy else 503)
 
 
 @system_api.get("/system/info")

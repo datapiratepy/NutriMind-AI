@@ -1,0 +1,40 @@
+# Tool configuration for NutriMind AI.
+#
+# The application itself is not packaged (it is deployed, not installed), so
+# this file carries tool settings only — no [project] metadata.
+
+[tool.ruff]
+line-length = 120
+# Matches the CI interpreter. The floor of the supported range is 3.11, but
+# target-version tells ruff which syntax is available, so it tracks what we run.
+target-version = "py313"
+src = ["."]
+
+[tool.ruff.lint]
+# Chosen for defect detection rather than style enforcement:
+#   E, W, F  pycodestyle + pyflakes — real errors and dead code
+#   I        import ordering, so diffs stay small and reviewable
+#   B        flake8-bugbear — likely bugs (mutable defaults, unstrict zip, ...)
+#   BLE      blind `except Exception`, which must always be a deliberate choice
+#   ARG      unused arguments, usually a sign of a stale signature
+#   C4       comprehension/collection misuse
+#
+# Deliberately NOT enabled yet: "UP" (pyupgrade). It reports ~30 modernisation
+# findings (typing.Iterator -> collections.abc, Optional[X] -> X | None). Those
+# are worth doing, but they touch ~20 files and belong in their own commit
+# rather than inside a milestone about safe defaults and dependency pinning.
+select = ["E", "W", "F", "I", "B", "BLE", "ARG", "C4"]
+
+[tool.ruff.lint.per-file-ignores]
+# Pytest fixtures are frequently requested for their side effect (creating rows)
+# without being referenced in the body; that is idiomatic, not a stale signature.
+"tests/**" = ["ARG001", "ARG005"]
+# The demo backend holds a canned JSON meal plan as a literal. Wrapping it would
+# make the fixture harder to read, not easier.
+"nutrimind/services/llm/demo_client.py" = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+# Credential isolation is handled in tests/conftest.py, which neutralises .env
+# loading for the session — see the fixture docstring for why that is necessary.

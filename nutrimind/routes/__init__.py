@@ -20,8 +20,12 @@ def ok(data: dict, status: int = 200):
 def register_blueprints(app: Flask, csrf) -> None:
     """Register all blueprints; JSON APIs are exempt from form-CSRF.
 
-    Rationale: the API is same-origin JSON consumed by our own fetch() code;
-    CSRF tokens protect server-rendered forms, which arrive in Phase 7.
+    Rationale (and its limit): the API is same-origin JSON consumed by our own
+    fetch() code, and with no authentication there is no session for a forged
+    request to ride. That stops being true the moment login exists — the blanket
+    exemption must be removed together with authentication, not after it.
+    Note that /api/documents accepts multipart/form-data, which browsers send
+    cross-origin without a preflight.
     """
     from nutrimind.routes.chat_api import chat_api
     from nutrimind.routes.dashboard_api import dashboard_api

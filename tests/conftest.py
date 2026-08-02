@@ -54,7 +54,7 @@ def _release_chroma_clients() -> None:
             module = __import__(module_path, fromlist=["SharedSystemClient"])
             module.SharedSystemClient.clear_system_cache()
             return
-        except Exception:  # pragma: no cover - version-dependent, best effort
+        except Exception:  # noqa: BLE001 — pragma: no cover; version-dependent, best effort
             continue
 
 

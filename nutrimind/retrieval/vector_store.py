@@ -121,9 +121,12 @@ class VectorStore:
             raise RetrievalError(f"Vector search failed: {exc}") from exc
 
         hits: list[RetrievedChunk] = []
+        # strict=True: Chroma returns these three lists per query and they are
+        # positionally paired. If they ever differ in length the pairing is
+        # meaningless, so fail loudly rather than silently truncating results.
         for text, metadata, distance in zip(result["documents"][0],
                                             result["metadatas"][0],
-                                            result["distances"][0]):
+                                            result["distances"][0], strict=True):
             hits.append(RetrievedChunk(
                 text=text,
                 similarity=1.0 - float(distance),

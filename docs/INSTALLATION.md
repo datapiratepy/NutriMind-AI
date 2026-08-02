@@ -4,12 +4,35 @@ From zero to a running NutriMind AI. No prior knowledge assumed.
 
 ## System requirements
 
-- **Python 3.11 or newer** (3.10 works; 3.11+ recommended) — check with
-  `python --version`
+- **Python 3.13** — see [Python version](#0-python-version) below; the supported
+  range is 3.11–3.14 and it is enforced by pip, not merely recommended
 - ~1.5 GB free disk (dependencies incl. ChromaDB)
 - Windows 10/11, macOS, or Linux
 - Internet connection (UI assets load from CDNs; pip downloads packages)
 - *(Optional, for live AI)* an IBM Cloud Lite account — free, no credit card
+
+## 0. Python version
+
+**Use Python 3.13.** That is what CI runs and what the deployment image will use.
+
+The supported range is **3.11 – 3.14**, and it is not a matter of taste: the
+`ibm-watsonx-ai` SDK declares `Requires-Python >=3.11,<3.15`, so pip refuses to
+install outside it. Older SDK releases cap it lower still (1.3.x is `<3.14`,
+1.2.x is `<3.13`), which means the interpreter and the SDK version have to be
+chosen together — see the note in `requirements.in`.
+
+3.13 rather than 3.14 for one practical reason: roughly twenty SDK releases work
+on 3.13, but only three work on 3.14. If a release turns out to be broken, that
+difference is your entire ability to roll back.
+
+```powershell
+py -3.13 --version    # Windows: should print Python 3.13.x
+python3.13 --version  # macOS/Linux
+```
+
+If it is missing, install it from [python.org/downloads](https://www.python.org/downloads/)
+(on Windows, tick **Add python.exe to PATH**). Installing 3.13 does not remove or
+replace any other Python version you already have.
 
 ## 1. Get the code
 
@@ -20,29 +43,42 @@ cd nutrimind-ai
 
 ## 2. Create a virtual environment
 
+Name the interpreter explicitly. `python` points at whichever version is first
+on PATH, which is how a project ends up silently built against the wrong one.
+
 **Windows (PowerShell / cmd):**
-```bash
-python -m venv .venv
+```powershell
+py -3.13 -m venv .venv
 .venv\Scripts\activate
 ```
 
 **macOS / Linux:**
 ```bash
-python3 -m venv .venv
+python3.13 -m venv .venv
 source .venv/bin/activate
 ```
 
-Your prompt should now start with `(.venv)`.
+Your prompt should now start with `(.venv)`. Confirm it took effect:
+
+```bash
+python --version        # Python 3.13.x
+```
 
 ## 3. Install dependencies
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements.txt                          # to run the app
+pip install -r requirements.txt -r requirements-dev.txt  # to run the tests too
 ```
 
-Takes 2-5 minutes (ChromaDB is the largest). The optional
-`sentence-transformers` line is commented out by default — only install it
-if you want offline semantic embeddings (pulls PyTorch, ~2 GB).
+Takes 2-5 minutes (ChromaDB is the largest). Versions are pinned exactly, so
+everyone gets the set the tests were verified against.
+
+`requirements-dev.txt` adds pytest, ruff and pip-audit. They are kept separate
+so a production install never pulls a test runner into the deployed environment.
+
+The optional `sentence-transformers` line is commented out by default — only
+install it if you want offline semantic embeddings (pulls PyTorch, ~2 GB).
 
 ## 4. Run — Demo mode (zero configuration)
 
@@ -84,9 +120,12 @@ commented list: IBM credentials (`WATSONX_APIKEY`, `WATSONX_PROJECT_ID`,
 
 ## 7. Run the tests
 
+Requires `requirements-dev.txt` (see step 3).
+
 ```bash
-pytest tests/ -q                                  # 156 tests, ~20 s
+pytest tests/ -q                                  # 180 tests, ~20 s
 pytest tests/ --cov=nutrimind --cov-report=term   # with coverage (~88%)
+ruff check .                                      # lint, as CI runs it
 ```
 
 No API keys needed — the suite runs in demo mode.

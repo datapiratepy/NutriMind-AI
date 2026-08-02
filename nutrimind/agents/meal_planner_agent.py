@@ -24,7 +24,9 @@ def _validate_plan(data: dict) -> dict:
     if not isinstance(meals, list) or len(meals) != len(_REQUIRED_MEALS):
         raise ValueError(f"'meals' must list exactly {_REQUIRED_MEALS}")
     cleaned_meals = []
-    for expected, meal in zip(_REQUIRED_MEALS, meals):
+    # strict=True: the length check above already guarantees these match, so a
+    # mismatch here would mean that check regressed rather than a bad model reply.
+    for expected, meal in zip(_REQUIRED_MEALS, meals, strict=True):
         if str(meal.get("name", "")).lower() != expected.lower():
             raise ValueError(f"meal order must be {_REQUIRED_MEALS}")
         items = meal.get("items")

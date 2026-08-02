@@ -4,6 +4,11 @@ Agents never touch services directly — every capability goes through the
 request-scoped :class:`Toolbox`, which records each call so the final
 response metadata can show exactly which tools ran (explainable agentic
 behavior, ARCHITECTURE.md §3.2).
+
+The Toolbox takes a *factory* rather than a live ``RAGService`` so the vector
+store is opened only if a turn actually retrieves. Small-talk and BMI replies
+are documented as needing no LLM and no retrieval; constructing the RAG stack
+up front made a Chroma problem take both of them down as well.
 """
 
 from __future__ import annotations
@@ -11,6 +16,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from nutrimind.retrieval.retriever import RetrievalResult
@@ -36,8 +42,11 @@ class ToolCall:
 class Toolbox:
     """Request-scoped tool facade; records every invocation."""
 
-    def __init__(self, rag: RAGService) -> None:
-        self._rag = rag
+    def __init__(self, rag_factory: Callable[[], RAGService]) -> None:
+        """:param rag_factory: called at most once, on the first retrieval."""
+        self._rag_factory = rag_factory
+        self._rag: RAGService | None = None
+        self._rag_failed = False
         self.calls: list[ToolCall] = []
 
     def _record(self, tool: str, summary: str) -> None:
@@ -48,13 +57,40 @@ class Toolbox:
         return [{"tool": c.tool, "summary": c.summary} for c in self.calls]
 
     def embedding_provider_name(self) -> str:
-        return self._rag.provider.name
+        """Provider that actually ran this turn.
+
+        ``"not_used"`` when the turn never retrieved (small talk, BMI, meal
+        planning) and ``"unavailable"`` when the store could not be opened.
+        Naming a provider that was never invoked would be a false claim in
+        metadata the UI renders verbatim.
+        """
+        if self._rag is not None:
+            return self._rag.provider.name
+        return "unavailable" if self._rag_failed else "not_used"
 
     # -- tools ------------------------------------------------------------
 
     def retrieve_knowledge(self, query: str, *, top_k: int | None = None) -> RetrievalResult:
-        """Vector search over the knowledge base with grounding threshold."""
-        result = self._rag.retrieve(query, top_k=top_k)
+        """Vector search over the knowledge base with grounding threshold.
+
+        Never raises. A retrieval failure returns an empty, ungrounded result so
+        the agent takes its existing "answering from general knowledge" path
+        (with the visible banner) instead of failing the whole turn. The failure
+        is logged and recorded as a tool call, so it stays visible rather than
+        silently looking like an empty knowledge base.
+        """
+        try:
+            if self._rag is None:
+                self._rag = self._rag_factory()
+            result = self._rag.retrieve(query, top_k=top_k)
+        except Exception as exc:  # noqa: BLE001 — degrade, never fail the turn
+            self._rag_failed = True
+            logger.warning("retrieval unavailable (%s: %s) — answering ungrounded",
+                           type(exc).__name__, exc)
+            self._record("retrieve_knowledge",
+                         f"unavailable ({type(exc).__name__}) — answered without grounding")
+            return RetrievalResult(query=query, chunks=[], grounded=False,
+                                   provider="unavailable", threshold=0.0)
         self._record("retrieve_knowledge",
                      f"{len(result.chunks)} passages above threshold "
                      f"{result.threshold} (provider={result.provider})")

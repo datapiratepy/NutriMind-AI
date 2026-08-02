@@ -33,7 +33,7 @@ class RequestIdFilter(logging.Filter):
 
             if has_request_context():
                 request_id = getattr(g, "request_id", "-")
-        except Exception:  # pragma: no cover — logging must never raise
+        except Exception:  # noqa: BLE001 — pragma: no cover; logging must never raise
             pass
         record.request_id = request_id
         return True

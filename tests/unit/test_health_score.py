@@ -3,7 +3,6 @@
 import datetime as dt
 from dataclasses import dataclass, field
 
-
 from nutrimind.services.health_score_service import compute_health_score
 
 TODAY = dt.date(2026, 7, 6)

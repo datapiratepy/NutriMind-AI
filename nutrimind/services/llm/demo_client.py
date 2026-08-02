@@ -10,7 +10,6 @@ are stable pseudo-vectors derived from a SHA-256 of the text, so the whole
 RAG pipeline (index → search) stays functional — semantically naive, but
 mechanically identical to live mode. Every reply is transparently labeled.
 
-The per-agent demo scripts are expanded in Phase 6 alongside the real prompts.
 """
 
 from __future__ import annotations

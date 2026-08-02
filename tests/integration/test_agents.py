@@ -32,7 +32,7 @@ def _run(app, message: str):
     """Drive the coordinator; returns (events, final_event)."""
     settings = app.config["NUTRIMIND_SETTINGS"]
     request = AgentRequest(message=message,
-                           toolbox=Toolbox(get_rag_service(settings)),
+                           toolbox=Toolbox(lambda: get_rag_service(settings)),
                            llm=get_llm_client(settings, refresh=True),
                            profile=UserProfile.get_singleton(), history=())
     events = list(get_coordinator().handle(request))

@@ -243,7 +243,7 @@ a:hover { text-decoration: underline; }
   .nm-chat-wrap { height: calc(100vh - 56px - 2rem); }
 }
 
-/* --- mini bar charts (Phase 8, dependency-free) ------------------------------ */
+/* --- mini bar charts (dependency-free) ------------------------------ */
 .nm-bars { display: flex; align-items: flex-end; gap: 6px; height: 110px; }
 .nm-bar-col { flex: 1; display: flex; flex-direction: column; align-items: center;
   gap: 4px; min-width: 0; height: 100%; justify-content: flex-end; }

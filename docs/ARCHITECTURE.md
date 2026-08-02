@@ -301,7 +301,7 @@ Server-rendered Jinja2 + Bootstrap 5.3 with a thin vanilla-JS layer (no build st
 
 ## 12. Tech Stack
 
-Python 3.11+ · Flask 3.x · SQLAlchemy 2.x · `ibm-watsonx-ai` · ChromaDB · pypdf · sentence-transformers (optional extra, fallback embeddings) · Bootstrap 5.3 · Chart.js · Bootstrap Icons · pytest · reportlab/xhtml2pdf (PDF export — picked in Phase 8) · python-dotenv
+Python 3.13, supported range 3.11–3.14 (set by `ibm-watsonx-ai`'s Requires-Python) · Flask 3.x · SQLAlchemy 2.x · `ibm-watsonx-ai` · ChromaDB · pypdf · sentence-transformers (optional extra, fallback embeddings) · Bootstrap 5.3 · Chart.js · Bootstrap Icons · pytest · reportlab (PDF export) · python-dotenv
 
 ---
 

@@ -1,4 +1,4 @@
-"""Knowledge-base document registry (mirrored to ChromaDB from Phase 5)."""
+"""Knowledge-base document registry (mirrored into ChromaDB at ingestion)."""
 
 from __future__ import annotations
 
@@ -26,7 +26,11 @@ class Document(db.Model):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     filename: Mapped[str] = mapped_column(db.String(255))
-    stored_name: Mapped[str] = mapped_column(db.String(64), unique=True)
+    # 255, not 64: uploads fit in 64 ("instance/uploads/<32 hex>.pdf" = 53), but
+    # seeded files store a repo-relative path ("knowledge_base/<name>.pdf") that
+    # can exceed it. SQLite ignores VARCHAR limits, so this only surfaces as an
+    # error once the data moves to Postgres.
+    stored_name: Mapped[str] = mapped_column(db.String(255), unique=True)
     sha256: Mapped[str] = mapped_column(db.String(64), index=True)
     pages: Mapped[int] = mapped_column(default=0)
     chunk_count: Mapped[int] = mapped_column(default=0)

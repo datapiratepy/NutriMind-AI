@@ -1,0 +1,42 @@
+# NutriMind AI — direct runtime dependencies, as intent.
+#
+# This file records WHICH packages the application needs and the minimum
+# versions it relies on. It is the file a human edits.
+#
+# requirements.txt holds the exact versions that are actually installed and
+# tested. Regenerate it after changing anything here:
+#
+#     pip install pip-tools
+#     pip-compile requirements.in --output-file requirements.txt
+#
+# Run pip-compile on the same Python version as CI and production (3.11).
+
+# Web framework
+flask>=3.0
+flask-sqlalchemy>=3.1
+flask-wtf>=1.2
+python-dotenv>=1.0
+
+# IBM watsonx.ai
+#
+# This is the dependency that decides which Python versions the project can run
+# on. Every release declares an upper bound and it moves:
+#     1.2.x   >=3.10,<3.13
+#     1.3.x   >=3.10,<3.14
+#     1.4-1.5 >=3.11,<3.14
+#     1.5.13+ >=3.11,<3.15
+# The floor is >=1.6 so the resolver cannot pick a release that silently
+# narrows the supported interpreter range. Re-check this bound before changing
+# the Python version in CI or the deployment image.
+ibm-watsonx-ai>=1.6
+
+# RAG
+chromadb>=0.5
+pypdf>=4.0
+
+# PDF export
+reportlab>=4.0
+
+# Optional local embedding fallback (heavy: pulls PyTorch). Install only if you
+# want offline embeddings: pip install sentence-transformers
+# sentence-transformers>=3.0

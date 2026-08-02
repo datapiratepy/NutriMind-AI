@@ -1,6 +1,6 @@
 """RAGService: the service-layer facade over the retrieval package.
 
-Routes and (from Phase 6) agents talk to this class only — they never touch
+Routes and agents talk to this class only — they never touch
 Chroma, pypdf or embedding providers directly. One instance per process,
 bound to the resolved embedding provider and its collection.
 """
