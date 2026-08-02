@@ -9,6 +9,7 @@ from sqlalchemy import CheckConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from nutrimind.extensions import db
+from nutrimind.utils.time import utcnow
 
 STATUSES = ("pending", "processing", "indexed", "failed")
 
@@ -37,7 +38,7 @@ class Document(db.Model):
     status: Mapped[str] = mapped_column(db.String(12), default="pending")
     error: Mapped[Optional[str]] = mapped_column(db.Text)
     condition_tags: Mapped[list] = mapped_column(db.JSON, default=list)
-    uploaded_at: Mapped[dt.datetime] = mapped_column(default=dt.datetime.utcnow, index=True)
+    uploaded_at: Mapped[dt.datetime] = mapped_column(default=utcnow, index=True)
 
     def mark_indexed(self, *, pages: int, chunk_count: int) -> None:
         """Transition to 'indexed' after a successful ingestion run."""

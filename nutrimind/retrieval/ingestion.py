@@ -9,7 +9,6 @@ docs/IMPLEMENTATION_NOTES.md).
 
 from __future__ import annotations
 
-import datetime as dt
 import hashlib
 import logging
 from pathlib import Path
@@ -20,6 +19,7 @@ from nutrimind.extensions import db
 from nutrimind.models import Document
 from nutrimind.retrieval.chunker import chunk_pages
 from nutrimind.retrieval.vector_store import VectorStore
+from nutrimind.utils.time import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +124,7 @@ def ingest_pdf(
         vector_store.add_chunks(
             document_id=document.id,
             filename=original_filename,
-            uploaded_at=dt.datetime.utcnow().isoformat(timespec="seconds"),
+            uploaded_at=utcnow().isoformat(timespec="seconds"),
             chunks=chunks,
             embeddings=embeddings,
         )
@@ -162,7 +162,7 @@ def reindex_document(document: Document, *, settings: Settings,
         vector_store.add_chunks(
             document_id=document.id,
             filename=document.filename,
-            uploaded_at=dt.datetime.utcnow().isoformat(timespec="seconds"),
+            uploaded_at=utcnow().isoformat(timespec="seconds"),
             chunks=chunks,
             embeddings=embeddings,
         )

@@ -15,6 +15,7 @@ from nutrimind.models import (
     UserProfile,
     WaterLog,
 )
+from nutrimind.utils.time import utcnow
 
 
 def test_profile_singleton_and_prompt_summary(app):
@@ -44,7 +45,7 @@ def test_profile_check_constraint(app):
 
 def test_meal_log_since_and_roundtrip(app):
     with app.app_context():
-        old = MealLog(ts=dt.datetime.utcnow() - dt.timedelta(days=30), calories=500)
+        old = MealLog(ts=utcnow() - dt.timedelta(days=30), calories=500)
         new = MealLog(calories=650, items=[{"name": "roti"}], meal_type="lunch")
         db.session.add_all([old, new])
         db.session.commit()

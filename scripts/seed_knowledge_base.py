@@ -19,7 +19,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from nutrimind import create_app  # noqa: E402
+from nutrimind import apply_migrations, create_app  # noqa: E402
 from nutrimind.exceptions import NutriMindError, ValidationError  # noqa: E402
 from nutrimind.services.rag_service import get_rag_service  # noqa: E402
 
@@ -31,6 +31,10 @@ def main() -> int:
     args = parser.parse_args()
 
     app = create_app()
+    # The schema is owned by the migration scripts, so this may be the first
+    # thing to touch a brand-new database — seeding before `python run.py` is a
+    # normal order of operations on a fresh clone.
+    apply_migrations(app)
     with app.app_context():
         service = get_rag_service(app.config["NUTRIMIND_SETTINGS"])
         print(f"provider: {service.provider.name} "

@@ -9,6 +9,7 @@ from sqlalchemy import CheckConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from nutrimind.extensions import db
+from nutrimind.utils.time import utcnow
 
 
 class UserProfile(db.Model):
@@ -38,9 +39,9 @@ class UserProfile(db.Model):
     food_preference: Mapped[str] = mapped_column(db.String(20))
     weight_goal: Mapped[str] = mapped_column(db.String(10), default="maintain")
     daily_calorie_goal: Mapped[Optional[int]]
-    created_at: Mapped[dt.datetime] = mapped_column(default=dt.datetime.utcnow)
-    updated_at: Mapped[dt.datetime] = mapped_column(default=dt.datetime.utcnow,
-                                                    onupdate=dt.datetime.utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(default=utcnow)
+    updated_at: Mapped[dt.datetime] = mapped_column(default=utcnow,
+                                                    onupdate=utcnow)
 
     @classmethod
     def get_singleton(cls) -> "UserProfile | None":

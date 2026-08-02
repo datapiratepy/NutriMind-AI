@@ -8,6 +8,7 @@ from sqlalchemy import CheckConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from nutrimind.extensions import db
+from nutrimind.utils.time import utcnow, utctoday
 
 
 class BMIRecord(db.Model):
@@ -16,7 +17,7 @@ class BMIRecord(db.Model):
     __tablename__ = "bmi_records"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    ts: Mapped[dt.datetime] = mapped_column(default=dt.datetime.utcnow, index=True)
+    ts: Mapped[dt.datetime] = mapped_column(default=utcnow, index=True)
     height_cm: Mapped[float]
     weight_kg: Mapped[float]
     bmi: Mapped[float]
@@ -52,7 +53,7 @@ class WaterLog(db.Model):
     @classmethod
     def add_glasses(cls, amount: int = 1, *, on_date: dt.date | None = None) -> "WaterLog":
         """Upsert today's row, clamping the total to the valid range."""
-        day = on_date or dt.datetime.utcnow().date()  # UTC day, matching MealLog.ts
+        day = on_date or utctoday()  # UTC day, matching MealLog.ts
         row = db.session.execute(
             db.select(cls).where(cls.date == day)
         ).scalar_one_or_none()

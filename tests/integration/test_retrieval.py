@@ -6,14 +6,13 @@ synthetic three-page PDF built with pypdf — no external files needed.
 
 from __future__ import annotations
 
-import datetime as dt
-
 import pytest
 
 from nutrimind.retrieval.chunker import Chunk
 from nutrimind.retrieval.embeddings import HashEmbeddingProvider
 from nutrimind.retrieval.retriever import RetrievalResult, Retriever
 from nutrimind.retrieval.vector_store import RetrievedChunk, VectorStore
+from nutrimind.utils.time import utcnow
 
 
 @pytest.fixture()
@@ -29,7 +28,7 @@ def _index_sample(store: VectorStore, document_id: int = 1) -> list[Chunk]:
     ]
     embeddings = store.provider.embed_documents([c.text for c in chunks])
     store.add_chunks(document_id=document_id, filename="sample.pdf",
-                     uploaded_at=dt.datetime.utcnow().isoformat(timespec="seconds"),
+                     uploaded_at=utcnow().isoformat(timespec="seconds"),
                      chunks=chunks, embeddings=embeddings)
     return chunks
 

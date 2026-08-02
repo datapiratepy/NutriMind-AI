@@ -9,6 +9,7 @@ from sqlalchemy import CheckConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from nutrimind.extensions import db
+from nutrimind.utils.time import utcnow
 
 
 class MealLog(db.Model):
@@ -24,7 +25,7 @@ class MealLog(db.Model):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    ts: Mapped[dt.datetime] = mapped_column(default=dt.datetime.utcnow, index=True)
+    ts: Mapped[dt.datetime] = mapped_column(default=utcnow, index=True)
     meal_type: Mapped[str] = mapped_column(db.String(12), default="other")
     raw_text: Mapped[Optional[str]] = mapped_column(db.Text)
     items: Mapped[list] = mapped_column(db.JSON, default=list)
@@ -39,7 +40,7 @@ class MealLog(db.Model):
     @classmethod
     def since(cls, days: int) -> list["MealLog"]:
         """Logs from the last ``days`` days, oldest first."""
-        cutoff = dt.datetime.utcnow() - dt.timedelta(days=days)
+        cutoff = utcnow() - dt.timedelta(days=days)
         return list(db.session.execute(
             db.select(cls).where(cls.ts >= cutoff).order_by(cls.ts)
         ).scalars())
@@ -67,7 +68,7 @@ class MealPlan(db.Model):
     __tablename__ = "meal_plans"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    created_at: Mapped[dt.datetime] = mapped_column(default=dt.datetime.utcnow, index=True)
+    created_at: Mapped[dt.datetime] = mapped_column(default=utcnow, index=True)
     title: Mapped[str] = mapped_column(db.String(120))
     targets: Mapped[dict] = mapped_column(db.JSON, default=dict)
     plan: Mapped[dict] = mapped_column(db.JSON, default=dict)

@@ -86,6 +86,10 @@ install it if you want offline semantic embeddings (pulls PyTorch, ~2 GB).
 python run.py
 ```
 
+`run.py` applies any pending database migrations before serving, so there is no
+separate setup step. (Production does not do this automatically — see
+[DEPLOYMENT.md](DEPLOYMENT.md#database-migrations) for why.)
+
 Open **http://127.0.0.1:5000**. The topbar shows **Demo mode**: every
 feature works with deterministic sample AI responses and a mechanically
 functional RAG pipeline. Perfect for a first look or an offline evaluation.

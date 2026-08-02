@@ -8,6 +8,7 @@ The app boots fully in demo mode with zero IBM credentials.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 from flask import Flask, g, jsonify, render_template, request
 from sqlalchemy.exc import SQLAlchemyError
@@ -15,7 +16,7 @@ from werkzeug.exceptions import HTTPException
 
 from nutrimind.config import Settings, load_settings, resolve_app_mode, validate_settings
 from nutrimind.exceptions import ConfigurationError, NutriMindError
-from nutrimind.extensions import csrf, db
+from nutrimind.extensions import csrf, db, migrate
 from nutrimind.utils.decorators import init_request_middleware
 from nutrimind.utils.logging_config import configure_logging
 
@@ -55,9 +56,18 @@ def create_app(settings: Settings | None = None) -> Flask:
     db.init_app(app)
     csrf.init_app(app)  # JSON API blueprints are exempted during registration
 
-    with app.app_context():
-        import nutrimind.models  # noqa: F401 — register all models
-        db.create_all()
+    # Importing the models package registers every table on ``db.metadata``,
+    # which is what Alembic autogenerate compares against.
+    import nutrimind.models  # noqa: F401
+
+    # The schema is created and evolved by the migration scripts, never here.
+    # ``db.create_all()`` only ever creates *missing tables* — it cannot add a
+    # column, change a constraint or backfill data, so it silently does nothing
+    # useful the first time the schema changes under real data. Applying
+    # migrations is an explicit step: automatic in ``run.py`` for development,
+    # and a deliberate ``flask db upgrade`` in the deployment runbook, where
+    # several workers must not race each other to migrate.
+    migrate.init_app(app, db)
 
     init_request_middleware(app)
     _register_blueprints(app)
@@ -66,6 +76,83 @@ def create_app(settings: Settings | None = None) -> Flask:
     logger.info("NutriMind AI v%s started — requested mode '%s' (effective '%s')",
                 __version__, settings.app_mode, resolve_app_mode(settings))
     return app
+
+
+#: Absolute location of the Alembic scripts, resolved from the package rather
+#: than the caller's working directory.
+MIGRATIONS_DIR = Path(__file__).resolve().parent.parent / "migrations"
+
+
+def _baseline_revision() -> str:
+    """The first revision in the history, read from the scripts themselves."""
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    config = Config(str(MIGRATIONS_DIR / "alembic.ini"))
+    config.set_main_option("script_location", str(MIGRATIONS_DIR))
+    return ScriptDirectory.from_config(config).get_base()
+
+
+def _needs_baseline_stamp(connection) -> bool:
+    """True when the database holds our schema but records no revision.
+
+    The test is "has Alembic recorded a revision", not "does ``alembic_version``
+    exist". Those differ in a state that occurs in practice: Alembic creates
+    ``alembic_version`` *before* running a migration and writes the row after,
+    so an upgrade that fails part-way leaves the table present and **empty**.
+    Checking for the table alone would treat such a database as already managed,
+    skip adoption, and fail exactly the same way on every retry.
+
+    Both no-revision cases mean the same thing when application tables are
+    present: the schema predates migrations. It was built by the
+    ``db.create_all()`` used before Alembic was adopted, or by a baseline run
+    that died on ``table ... already exists``. Either way the tables are real and
+    the baseline must be stamped rather than executed.
+    """
+    from alembic.migration import MigrationContext
+    from sqlalchemy import inspect
+
+    if MigrationContext.configure(connection).get_current_revision() is not None:
+        return False
+    return bool(set(inspect(connection).get_table_names()) & set(db.metadata.tables))
+
+
+def apply_migrations(app: Flask) -> None:
+    """Bring the database up to the latest revision, from any starting state.
+
+    Handles the three states a database can be in:
+
+    * **empty** — no tables at all; the migrations build the schema.
+    * **pre-Alembic** — the schema exists but nothing recorded how it got there
+      (any database created before this milestone). It is stamped at the
+      baseline revision, which records "this schema is already applied" without
+      executing it, and then upgraded through anything newer.
+    * **already managed** — a normal upgrade to the newest revision.
+
+    For **single-process entry points only** — the development server and the
+    operational scripts. Concurrent web workers must not race each other to
+    migrate the same database, so deployments run this once, deliberately, via
+    ``scripts/upgrade_database.py``.
+
+    Shared rather than inlined at each call site because both the adoption
+    detection and locating ``migrations/`` relative to the caller are easy to
+    get subtly wrong, and both fail quietly rather than loudly.
+    """
+    from flask_migrate import stamp, upgrade
+
+    with app.app_context():
+        with db.engine.connect() as connection:
+            adopt = _needs_baseline_stamp(connection)
+
+        if adopt:
+            baseline = _baseline_revision()
+            logger.warning(
+                "Database has tables but no recorded revision — adopting it at "
+                "baseline %s. The schema is not modified; this only records that "
+                "the baseline is already applied.", baseline)
+            stamp(directory=str(MIGRATIONS_DIR), revision=baseline)
+
+        upgrade(directory=str(MIGRATIONS_DIR))
 
 
 def _register_blueprints(app: Flask) -> None:

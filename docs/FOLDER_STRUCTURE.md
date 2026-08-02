@@ -10,7 +10,10 @@ The repository is scaffolded with placeholder files: every `.py` carries a docst
 
 ```
 nutrimind-ai/                        # repo root
-├── run.py                           # dev entry point: create_app() + run
+├── run.py                           # dev entry point: migrate, then create_app() + run
+├── migrations/                      # Alembic revisions — the schema's source of truth
+│   ├── env.py                       # hand-maintained; the rest is generated
+│   └── versions/                    # immutable history, excluded from linting
 ├── requirements.in                  # direct runtime deps, as intent (edit this)
 ├── requirements.txt                 # runtime deps, pinned exactly (generated)
 ├── requirements-dev.txt             # pytest / ruff / pip-audit — never deployed

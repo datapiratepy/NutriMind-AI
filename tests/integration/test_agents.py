@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import datetime as dt
-
 import pytest
 
 from nutrimind.agents import get_coordinator
@@ -14,6 +12,7 @@ from nutrimind.models import MealLog, MealPlan, UserProfile
 from nutrimind.retrieval.chunker import Chunk
 from nutrimind.services.llm import get_llm_client
 from nutrimind.services.rag_service import get_rag_service
+from nutrimind.utils.time import utcnow
 
 
 @pytest.fixture()
@@ -46,7 +45,7 @@ def _index_fact(app, text: str, page: int = 4):
     service = get_rag_service(settings)
     chunk = Chunk(text=text, page=page, chunk_index=0)
     service.store.add_chunks(document_id=99, filename="facts.pdf",
-                             uploaded_at=dt.datetime.utcnow().isoformat(),
+                             uploaded_at=utcnow().isoformat(),
                              chunks=[chunk],
                              embeddings=service.provider.embed_documents([text]))
 

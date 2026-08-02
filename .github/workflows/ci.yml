@@ -50,3 +50,58 @@ jobs:
       - name: Dependency vulnerability audit
         continue-on-error: true
         run: pip-audit --requirement requirements.txt --requirement requirements-dev.txt
+
+  # Development runs on SQLite; production runs on PostgreSQL. This job is what
+  # stops that gap from hiding a dialect bug until deployment day.
+  #
+  # It applies the migrations to a real PostgreSQL server and asserts the result
+  # matches the models. Deliberately not the whole suite: the dialect-sensitive
+  # surface is the schema, and the agents, routes and retrieval layers behave
+  # identically on both. Running all 180+ tests twice would double CI time to
+  # re-prove things SQLite already proved.
+  postgres:
+    name: migrations on postgres
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: nutrimind
+          POSTGRES_PASSWORD: nutrimind
+          POSTGRES_DB: nutrimind_test
+        ports:
+          - 5432:5432
+        # Without a health check the job races the container and fails
+        # intermittently, which is worse than failing consistently.
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      # Deliberately the deployment script rather than `flask db upgrade`, so CI
+      # exercises the exact command the runbook tells an operator to run.
+      - name: Apply migrations to PostgreSQL
+        env:
+          APP_MODE: demo
+          DATABASE_URI: postgresql+psycopg://nutrimind:nutrimind@localhost:5432/nutrimind_test
+        run: python scripts/upgrade_database.py
+
+      - name: Assert the PostgreSQL schema matches the models
+        env:
+          APP_MODE: demo
+          DATABASE_URI: postgresql+psycopg://nutrimind:nutrimind@localhost:5432/nutrimind_test
+        run: python scripts/check_schema.py

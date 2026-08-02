@@ -13,8 +13,6 @@ Endpoints
 
 from __future__ import annotations
 
-import datetime as dt
-
 from flask import Blueprint, request
 
 from nutrimind.exceptions import ValidationError
@@ -23,6 +21,7 @@ from nutrimind.models import BMIRecord, UserProfile, WaterLog
 from nutrimind.routes import ok
 from nutrimind.services import bmi_service
 from nutrimind.services.nutrition_service import targets_for_profile
+from nutrimind.utils.time import utctoday
 from nutrimind.utils.validators import (
     WATER_GLASSES_RANGE,
     validate_profile_payload,
@@ -118,7 +117,7 @@ def log_water():
 @profile_api.get("/water/today")
 def water_today():
     row = db.session.execute(
-        db.select(WaterLog).where(WaterLog.date == dt.datetime.utcnow().date())
+        db.select(WaterLog).where(WaterLog.date == utctoday())
     ).scalar_one_or_none()
     return ok({"water": row.to_dict() if row else {
-        "date": dt.datetime.utcnow().date().isoformat(), "glasses": 0}})
+        "date": utctoday().isoformat(), "glasses": 0}})

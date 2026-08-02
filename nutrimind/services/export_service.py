@@ -7,7 +7,6 @@ and disclaimer. Pure function over the ``MealPlan`` row — no HTTP concerns.
 
 from __future__ import annotations
 
-import datetime as dt
 import io
 
 from reportlab.lib import colors
@@ -22,6 +21,8 @@ from reportlab.platypus import (
     Table,
     TableStyle,
 )
+
+from nutrimind.utils.time import utcnow
 
 _ACCENT = colors.HexColor("#0f62fe")
 _INK = colors.HexColor("#161616")
@@ -112,7 +113,7 @@ def build_meal_plan_pdf(plan_row, profile=None) -> bytes:
         topMargin=15 * mm, bottomMargin=15 * mm,
         title=plan.get("title", "NutriMind meal plan"), author="NutriMind AI")
 
-    generated = dt.datetime.utcnow().strftime("%d %b %Y, %H:%M UTC")
+    generated = utcnow().strftime("%d %b %Y, %H:%M UTC")
     user_line = "Personalized plan"
     if profile is not None:
         user_line = (f"For <b>{profile.name}</b> · {profile.age} y · "

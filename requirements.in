@@ -17,6 +17,16 @@ flask-sqlalchemy>=3.1
 flask-wtf>=1.2
 python-dotenv>=1.0
 
+# Database schema migrations (Alembic, wired to the app factory).
+# Runtime, not dev-only: production applies migrations as a deployment step.
+flask-migrate>=4.1
+
+# PostgreSQL driver. Kept in the default runtime set rather than an optional
+# extra so the Postgres code path is always installed and testable; SQLite
+# remains the development default and nothing imports this unless
+# DATABASE_URI points at Postgres.
+psycopg[binary]>=3.2
+
 # IBM watsonx.ai
 #
 # This is the dependency that decides which Python versions the project can run

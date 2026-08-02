@@ -55,16 +55,76 @@ Never expose the WSGI port directly; bind it to localhost.
 - The in-memory rate limiter is per-process — put real limits at the proxy
   (nginx `limit_req`) for public exposure.
 
+## Database migrations
+
+The schema is owned by the versioned scripts in `migrations/`, not by the
+application. `create_app()` does **not** create tables.
+
+Applying migrations is an explicit deployment step, run once per release
+*before* starting the new workers:
+
+```bash
+python scripts/upgrade_database.py
+python scripts/check_schema.py     # release gate; exits 1 on drift
+```
+
+**Use the script, not bare `flask db upgrade`.** They differ on one case that
+matters exactly once per database. `flask db upgrade` only works where Alembic
+already tracks the schema; a database created before this project adopted
+migrations has all the tables but no `alembic_version` row, so Alembic reads no
+version marker, concludes the database is empty, replays the baseline revision
+and fails with `table bmi_records already exists`. The script detects that state
+and stamps the baseline first — recording that the existing schema is already
+applied, without altering it — then upgrades through anything newer. On an empty
+or already-tracked database it is an ordinary upgrade.
+
+Never run it from the web workers. Several processes migrating the same database
+at once is how a schema gets corrupted.
+
+It is deliberately not automatic at startup: with several workers booting
+together they would race each other to migrate the same database. The one
+exception is `python run.py`, which applies migrations for local development
+convenience — that path runs only under `__main__`, so a WSGI server never
+triggers it.
+
+After changing a model, generate the matching revision and commit it:
+
+```bash
+FLASK_APP=nutrimind flask db migrate -m "what changed"
+FLASK_APP=nutrimind flask db upgrade
+```
+
+CI fails if the models and the migration scripts disagree, so a forgotten
+revision is caught before it reaches a deployment.
+
+Rollback is `flask db downgrade`. Note that downgrades which drop columns
+destroy the data in them — for anything beyond a trivial revert, restoring
+from backup is the safer path.
+
 ## SQLite limitations & PostgreSQL path
 
-SQLite is deliberate for this scope (zero-ops, single user). Its limits:
-one writer at a time, no network access, file-on-disk durability story.
+SQLite is deliberate for local development (zero-ops, no server to run). Its
+limits: one writer at a time, no network access, file-on-disk durability story.
+It also does not enforce `VARCHAR` lengths, so column-width bugs stay invisible
+until they reach Postgres.
 
-Migration path (already prepared): models are SQLAlchemy 2.x and
-dialect-neutral; set `DATABASE_URI=postgresql+psycopg://user:pass@host/db`,
-`pip install psycopg`, run `db.create_all()` once. JSON columns map to
-Postgres JSONB automatically via SQLAlchemy. Multi-user would additionally
-add `profile_id` foreign keys (documented in IMPLEMENTATION_NOTES.md).
+For production, set:
+
+```
+DATABASE_URI=postgresql+psycopg://user:pass@host:5432/nutrimind
+```
+
+`psycopg` is already in `requirements.txt`, and the same migrations apply
+unchanged. CI runs them against a real PostgreSQL 16 server on every push and
+asserts the resulting schema matches the models, so this path is verified
+continuously rather than discovered on deployment day.
+
+Timestamps are stored as naive UTC (`TIMESTAMP WITHOUT TIME ZONE`) on both
+dialects — see `nutrimind/utils/time.py` for why that convention was chosen
+over timezone-aware columns.
+
+Multi-user additionally needs `user_id` foreign keys; that is the next
+milestone, and it is what the migration tooling above exists to make routine.
 
 ## State to persist across deploys
 

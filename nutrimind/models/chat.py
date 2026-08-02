@@ -9,6 +9,7 @@ from sqlalchemy import CheckConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from nutrimind.extensions import db
+from nutrimind.utils.time import utcnow
 
 
 class ChatMessage(db.Model):
@@ -32,7 +33,7 @@ class ChatMessage(db.Model):
     rag_used: Mapped[bool] = mapped_column(default=False)
     sources: Mapped[list] = mapped_column(db.JSON, default=list)
     tokens_used: Mapped[int] = mapped_column(default=0)
-    created_at: Mapped[dt.datetime] = mapped_column(default=dt.datetime.utcnow, index=True)
+    created_at: Mapped[dt.datetime] = mapped_column(default=utcnow, index=True)
 
     @classmethod
     def recent(cls, session_id: str, limit: int = 20) -> list["ChatMessage"]:

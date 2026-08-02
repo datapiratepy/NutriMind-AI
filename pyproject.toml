@@ -10,6 +10,14 @@ line-length = 120
 target-version = "py313"
 src = ["."]
 
+# Alembic generates these from its own template and they are immutable history:
+# a revision that has been applied somewhere must never be reformatted. Linting
+# them would also mean hand-tidying every file `flask db migrate` produces,
+# which is friction on a routine operation for no correctness gain.
+# migrations/env.py is excluded from this — it is hand-maintained, so it stays
+# linted (see per-file-ignores below).
+extend-exclude = ["migrations/versions"]
+
 [tool.ruff.lint]
 # Chosen for defect detection rather than style enforcement:
 #   E, W, F  pycodestyle + pyflakes — real errors and dead code
@@ -32,6 +40,9 @@ select = ["E", "W", "F", "I", "B", "BLE", "ARG", "C4"]
 # The demo backend holds a canned JSON meal plan as a literal. Wrapping it would
 # make the fixture harder to read, not easier.
 "nutrimind/services/llm/demo_client.py" = ["E501"]
+# process_revision_directives has a signature fixed by Alembic; the unused
+# parameters are part of the callback contract, not a stale signature.
+"migrations/env.py" = ["ARG001"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

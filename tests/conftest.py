@@ -78,6 +78,16 @@ def app(monkeypatch, tmp_path):
     llm_module._client = None
 
     application = create_app(load_settings(ensure_dirs=True))
+
+    # create_app no longer builds the schema — the migration scripts own it.
+    # Tests use create_all() rather than running the migration chain per test,
+    # because that would re-run every revision for each of ~180 tests to produce
+    # a schema create_all() derives from the same metadata instantly.
+    # The risk that skips — migrations drifting away from the models — is covered
+    # directly and once by tests/unit/test_migrations.py.
+    with application.app_context():
+        _db.create_all()
+
     yield application
     with application.app_context():
         _db.session.remove()

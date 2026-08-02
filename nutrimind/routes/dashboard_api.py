@@ -18,6 +18,7 @@ from nutrimind.models import BMIRecord, ChatMessage, MealLog, UserProfile, Water
 from nutrimind.routes import ok
 from nutrimind.services.health_score_service import compute_health_score
 from nutrimind.services.nutrition_service import targets_for_profile
+from nutrimind.utils.time import utcnow, utctoday
 
 dashboard_api = Blueprint("dashboard_api", __name__, url_prefix="/api")
 
@@ -29,7 +30,7 @@ def summary():
     profile = UserProfile.get_singleton()
     # UTC date: all timestamps (MealLog.ts, WaterLog.date) are stored in UTC,
     # so "today" must be the UTC day or buckets misalign around midnight.
-    today = dt.datetime.utcnow().date()
+    today = utctoday()
     meals = MealLog.since(_WINDOW_DAYS)
     water_rows = list(db.session.execute(
         db.select(WaterLog).where(
@@ -59,7 +60,7 @@ def summary():
     water_today = next((w.glasses for w in water_rows if w.date == today), 0)
 
     # AI activity over the window (assistant turns only).
-    window_start_dt = dt.datetime.utcnow() - dt.timedelta(days=_WINDOW_DAYS)
+    window_start_dt = utcnow() - dt.timedelta(days=_WINDOW_DAYS)
     assistant_msgs = list(db.session.execute(
         db.select(ChatMessage).where(ChatMessage.role == "assistant",
                                      ChatMessage.created_at >= window_start_dt)
