@@ -17,6 +17,9 @@ flask-sqlalchemy>=3.1
 flask-wtf>=1.2
 python-dotenv>=1.0
 
+# Session-cookie authentication.
+flask-login>=0.6
+
 # Database schema migrations (Alembic, wired to the app factory).
 # Runtime, not dev-only: production applies migrations as a deployment step.
 flask-migrate>=4.1

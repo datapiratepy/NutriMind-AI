@@ -149,7 +149,11 @@ class RAGSettings:
     chunk_size: int
     chunk_overlap: int
     top_k: int
-    similarity_threshold: float
+    #: None = let the embedding provider decide. Thresholds are a property of
+    #: a vector space, not a global constant: a dense semantic embedding and a
+    #: sparse lexical one score on completely different scales, so a single
+    #: value silently breaks whichever provider it was not chosen for.
+    similarity_threshold: float | None
 
 
 @dataclass(frozen=True)
@@ -185,6 +189,10 @@ class Settings:
     #: where secret_key came from: environment | generated | ephemeral | placeholder
     secret_key_source: str
     debug: bool
+    #: how long a signed-in session stays valid without re-authenticating
+    session_days: int
+    #: reverse proxies in front of the app whose X-Forwarded-* may be trusted
+    trusted_proxy_hops: int
     max_upload_mb: int
     log_level: str
     database_uri: str
@@ -216,7 +224,8 @@ def load_settings(dotenv_path: Path | None = None, *, ensure_dirs: bool = True) 
         chunk_size=_env_int("RAG_CHUNK_SIZE", 800),
         chunk_overlap=_env_int("RAG_CHUNK_OVERLAP", 120),
         top_k=_env_int("RAG_TOP_K", 5),
-        similarity_threshold=float(_env("RAG_SIMILARITY_THRESHOLD", "0.35")),
+        similarity_threshold=(float(_env("RAG_SIMILARITY_THRESHOLD"))
+                              if _env("RAG_SIMILARITY_THRESHOLD") else None),
     )
 
     instance_dir = (Path(_env("NUTRIMIND_INSTANCE_DIR"))
@@ -235,6 +244,12 @@ def load_settings(dotenv_path: Path | None = None, *, ensure_dirs: bool = True) 
         # and defaults are what get used when a deploy is rushed. Opt in locally
         # with FLASK_DEBUG=1.
         debug=_env_bool("FLASK_DEBUG", False),
+        # Long enough that people are not re-authenticating constantly, short
+        # enough that a session stolen from a shared machine expires.
+        session_days=_env_int("SESSION_DAYS", 14),
+        # 0 = not behind a proxy. Trusting the header when nothing strips it
+        # lets any client claim any address, so this must be opted into.
+        trusted_proxy_hops=_env_int("TRUSTED_PROXY_HOPS", 0),
         max_upload_mb=_env_int("MAX_UPLOAD_MB", 15),
         log_level=_env("LOG_LEVEL", "INFO").upper(),
         database_uri=_env(
@@ -308,6 +323,13 @@ def validate_settings(settings: Settings) -> tuple[list[str], list[str]]:
             "Follow docs/IBM_SETUP.md to enable live watsonx.ai responses."
         )
 
+    if not (0 <= settings.trusted_proxy_hops <= 5):
+        errors.append("TRUSTED_PROXY_HOPS must be 0-5, got "
+                      f"{settings.trusted_proxy_hops}.")
+
+    if not (1 <= settings.session_days <= 365):
+        errors.append(f"SESSION_DAYS must be 1-365, got {settings.session_days}.")
+
     if not (1 <= settings.max_upload_mb <= 100):
         errors.append(f"MAX_UPLOAD_MB must be 1-100, got {settings.max_upload_mb}.")
 
@@ -318,7 +340,7 @@ def validate_settings(settings: Settings) -> tuple[list[str], list[str]]:
         errors.append("RAG_CHUNK_OVERLAP must be >= 0 and smaller than RAG_CHUNK_SIZE.")
     if not (1 <= rag.top_k <= 20):
         errors.append(f"RAG_TOP_K must be 1-20, got {rag.top_k}.")
-    if not (0.0 <= rag.similarity_threshold <= 1.0):
+    if rag.similarity_threshold is not None and not (0.0 <= rag.similarity_threshold <= 1.0):
         errors.append(f"RAG_SIMILARITY_THRESHOLD must be 0-1, got {rag.similarity_threshold}.")
 
     if settings.secret_key_source == "placeholder":

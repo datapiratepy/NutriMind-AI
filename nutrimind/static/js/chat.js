@@ -154,16 +154,13 @@
     let shell = null;
     let streamed = "";
     try {
-      const response = await fetch("/api/chat", {
+      /* NM.fetch returns the raw Response so the SSE body can be streamed;
+         NM.api would consume it as JSON. The CSRF header still applies. */
+      const response = await NM.fetch("/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message, session_id: sessionId, stream: true }),
+        json: { message, session_id: sessionId, stream: true },
       });
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        throw new Error((body && body.error && body.error.message) ||
-                        `Request failed (${response.status})`);
-      }
+      if (!response.ok) throw new Error(await NM.readError(response));
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";

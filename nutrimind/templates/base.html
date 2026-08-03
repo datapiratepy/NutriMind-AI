@@ -7,6 +7,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}NutriMind AI{% endblock %} · NutriMind AI</title>
   <meta name="description" content="AI-powered nutrition assistant using IBM watsonx.ai, Granite and RAG">
+  {# Read by NM.api() and sent as X-CSRFToken on state-changing requests. #}
+  <meta name="csrf-token" content="{{ csrf_token() }}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -44,6 +46,32 @@
             aria-label="Toggle color theme" title="Theme: light / dark / auto">
       <i class="bi bi-circle-half"></i>
     </button>
+    {% if current_user.is_authenticated %}
+      <div class="dropdown">
+        <button class="btn btn-sm btn-outline-secondary border-0 dropdown-toggle"
+                data-bs-toggle="dropdown" aria-expanded="false"
+                aria-label="Account menu">
+          <i class="bi bi-person-circle"></i>
+          <span class="d-none d-md-inline ms-1">{{ current_user.display_name or current_user.email }}</span>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+          <li><span class="dropdown-item-text text-2" style="font-size:.8rem">{{ current_user.email }}</span></li>
+          <li><hr class="dropdown-divider"></li>
+          <li><a class="dropdown-item" href="/profile">Your profile</a></li>
+          <li>
+            {# POST, not a link: sign-out changes state, so it needs a CSRF
+               token and must not be triggerable by a prefetch or an <img src>. #}
+            <form method="post" action="{{ url_for('auth.logout') }}" class="px-1">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="dropdown-item" type="submit">Sign out</button>
+            </form>
+          </li>
+        </ul>
+      </div>
+    {% else %}
+      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('auth.login') }}">Sign in</a>
+      <a class="btn btn-sm btn-primary d-none d-sm-inline-block" href="{{ url_for('auth.register') }}">Sign up</a>
+    {% endif %}
   </div>
 </header>
 
@@ -57,7 +85,9 @@
     </div>
     <div class="offcanvas-body d-lg-block p-0 pt-lg-3">
       <ul class="nav flex-column nm-nav">
-        {% set items = [
+        {# Every destination below requires a session, so hide the whole nav
+           rather than showing links that only redirect back to sign-in. #}
+        {% set items = [] if not current_user.is_authenticated else [
           ("/", "house", "Home"),
           ("/chat", "chat-square-text", "AI Chat"),
           ("/dashboard", "grid-1x2", "Dashboard"),

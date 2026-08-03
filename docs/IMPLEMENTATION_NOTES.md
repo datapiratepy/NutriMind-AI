@@ -60,7 +60,7 @@ The architecture documents remain the source of truth; entries here explain
   pipeline mechanically functional (and the test suite green) with zero
   credentials. It is never selected silently: resolution logs a warning and
   ``/api/system/info`` reports the active provider. Each provider owns its
-  Chroma collection (``kb_watsonx`` / ``kb_local`` / ``kb_hash``).
+  Chroma collection (``kb_watsonx`` / ``kb_local`` / ``kb_lexical``).
 - **Ingestion is synchronous** (deviation from "index on first startup"):
   seed docs are indexed via ``scripts/seed_knowledge_base.py`` instead of at
   boot. Explicit beats implicit — startup stays fast and no watsonx tokens

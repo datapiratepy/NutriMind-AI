@@ -38,12 +38,12 @@ jobs:
 
       # A ratchet against silent erosion, not a target to chase — that is how
       # coverage always dies, one "I'll add the test later" at a time. Set just
-      # below the current 88% so rounding on an unrelated PR cannot block it;
+      # below the current 89% so rounding on an unrelated PR cannot block it;
       # raise it when the real number moves up.
       - name: Tests (demo mode, no secrets required)
         env:
           APP_MODE: demo
-        run: pytest tests/ -q --cov=nutrimind --cov-report=term --cov-fail-under=87
+        run: pytest tests/ -q --cov=nutrimind --cov-report=term --cov-fail-under=88
 
       # Advisory: a new CVE disclosure is not our regression, and should not
       # block an unrelated PR. It still has to be visible in the run summary.

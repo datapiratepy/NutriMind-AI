@@ -10,7 +10,26 @@ config = context.config
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
-fileConfig(config.config_file_name)
+# Alembic's template calls fileConfig(config.config_file_name) here. That is
+# removed deliberately, because this env.py never runs standalone: Flask-Migrate
+# builds the application first, so nutrimind.utils.logging_config has already
+# configured logging by the time Alembic starts.
+#
+# Letting fileConfig run would undo that configuration in two ways, both silent:
+#
+#   * disable_existing_loggers defaults to True, disabling every nutrimind.*
+#     logger that already exists;
+#   * alembic.ini's [logger_root] sets the root logger to WARN and replaces its
+#     handlers, which drops the INFO access log and detaches the rotating file
+#     handler writing instance/logs/nutrimind.log.
+#
+# run.py applies migrations during startup, so the result in production was an
+# application that then served traffic with no access log, no request ids and no
+# error records at all. Nothing failed — the logs simply stopped.
+#
+# Alembic's own "Running upgrade ..." messages still appear: its loggers
+# propagate to the root logger the application configured.
+_ = fileConfig  # imported by the template; intentionally not called
 logger = logging.getLogger('alembic.env')
 
 

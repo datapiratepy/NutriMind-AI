@@ -26,11 +26,16 @@ class Document(db.Model):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        db.ForeignKey("users.id", ondelete="CASCADE"), index=True)
     filename: Mapped[str] = mapped_column(db.String(255))
     # 255, not 64: uploads fit in 64 ("instance/uploads/<32 hex>.pdf" = 53), but
     # seeded files store a repo-relative path ("knowledge_base/<name>.pdf") that
     # can exceed it. SQLite ignores VARCHAR limits, so this only surfaces as an
     # error once the data moves to Postgres.
+    # Globally unique, so every Document row owns a distinct file. Uploads get a
+    # UUID name; seeded files are copied per owner for the same reason (see
+    # RAGService.ingest_path) rather than several rows sharing one path.
     stored_name: Mapped[str] = mapped_column(db.String(255), unique=True)
     sha256: Mapped[str] = mapped_column(db.String(64), index=True)
     pages: Mapped[int] = mapped_column(default=0)
@@ -46,6 +51,7 @@ class Document(db.Model):
         self.chunk_count = chunk_count
         self.status = "indexed"
         self.error = None
+
 
     def mark_failed(self, error: str) -> None:
         """Transition to 'failed', keeping a truncated error for the UI."""

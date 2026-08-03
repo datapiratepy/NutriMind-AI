@@ -26,7 +26,13 @@
         return;
       }
       rows.innerHTML = documents.map((d) => {
-        const [cls, icon, label] = STATUS_BADGE[d.status] || STATUS_BADGE.pending;
+        /* Indexed under a previous embedding provider: the row is healthy but
+           the vectors live in another collection, so it cannot be searched
+           until re-indexed. Saying 'indexed' here is what made retrieval look
+           broken rather than stale. */
+        const [cls, icon, label] = d.searchable === false
+          ? ["nm-badge-amber", "bi-arrow-repeat", "needs re-index"]
+          : (STATUS_BADGE[d.status] || STATUS_BADGE.pending);
         return `<tr>
           <td class="text-truncate" style="max-width:220px" title="${NM.esc(d.filename)}">
             <i class="bi bi-file-earmark-pdf me-1 text-2"></i>${NM.esc(d.filename)}
@@ -60,12 +66,11 @@
     const data = new FormData();
     data.append("file", file);
     try {
-      const response = await fetch("/api/documents", { method: "POST", body: data });
+      /* NM.fetch, not bare fetch: multipart uploads need the CSRF header just
+         as much as JSON requests do, and FormData sets its own Content-Type. */
+      const response = await NM.fetch("/api/documents", { method: "POST", body: data });
+      if (!response.ok) throw new Error(await NM.readError(response));
       const body = await response.json();
-      if (!response.ok) {
-        const err = body.error || {};
-        throw new Error(err.hint ? `${err.message} ${err.hint}` : err.message);
-      }
       NM.toast(`Indexed "${body.document.filename}" — ${body.document.chunk_count} chunks`,
                "success");
     } catch (error) {
@@ -126,9 +131,17 @@
       const { result } = await NM.api(
         `/api/documents/search?q=${encodeURIComponent(query)}&k=3`);
       if (!result.chunks.length) {
-        out.innerHTML = `<span class="text-2">No chunks above the
-          ${result.threshold} similarity threshold — a chat answer to this would
-          be labeled <em>general knowledge</em>.</span>`;
+        /* Say what is actually wrong. The old text quoted the threshold, which
+           reads as "tune this number" when the real cause is usually that the
+           active provider cannot match meaning, or that nothing is indexed. */
+        const reason = result.semantic
+          ? "Nothing in your documents was close enough in meaning."
+          : "Nothing in your documents shares words with that question. This "
+            + "knowledge base is using keyword matching, so try wording your "
+            + "search the way the document does — or connect IBM watsonx for "
+            + "semantic search.";
+        out.innerHTML = `<span class="text-2">${NM.esc(reason)}
+          A chat answer to this would be labeled <em>general knowledge</em>.</span>`;
         return;
       }
       out.innerHTML = result.chunks.map((c) => `

@@ -1,6 +1,6 @@
 """Integration tests: ingestion, Chroma persistence, retrieval, citations.
 
-Uses the hash embedding provider (dependency-free, deterministic) and a
+Uses the lexical embedding provider (dependency-free, deterministic) and a
 synthetic three-page PDF built with pypdf — no external files needed.
 """
 
@@ -9,7 +9,7 @@ from __future__ import annotations
 import pytest
 
 from nutrimind.retrieval.chunker import Chunk
-from nutrimind.retrieval.embeddings import HashEmbeddingProvider
+from nutrimind.retrieval.embeddings import LexicalEmbeddingProvider
 from nutrimind.retrieval.retriever import RetrievalResult, Retriever
 from nutrimind.retrieval.vector_store import RetrievedChunk, VectorStore
 from nutrimind.utils.time import utcnow
@@ -17,7 +17,7 @@ from nutrimind.utils.time import utcnow
 
 @pytest.fixture()
 def store(tmp_path) -> VectorStore:
-    return VectorStore(tmp_path / "chroma", HashEmbeddingProvider())
+    return VectorStore(tmp_path / "chroma", LexicalEmbeddingProvider())
 
 
 def _index_sample(store: VectorStore, document_id: int = 1) -> list[Chunk]:
@@ -40,20 +40,22 @@ def test_add_query_roundtrip_with_full_metadata(store):
     hit = store.query(store.provider.embed_query(chunks[1].text), top_k=1)[0]
     assert isinstance(hit, RetrievedChunk)
     assert hit.text == chunks[1].text
-    assert hit.similarity == pytest.approx(1.0, abs=1e-6)  # identical text, hash provider
+    assert hit.similarity == pytest.approx(1.0, abs=1e-6)  # identical text
     assert (hit.document_id, hit.filename, hit.page, hit.chunk_index) == (1, "sample.pdf", 2, 1)
     assert hit.citation() == {"filename": "sample.pdf", "page": 2}
 
 
 def test_persistence_across_instances(tmp_path):
-    first = VectorStore(tmp_path / "chroma", HashEmbeddingProvider())
+    first = VectorStore(tmp_path / "chroma", LexicalEmbeddingProvider())
     _index_sample(first)
-    reopened = VectorStore(tmp_path / "chroma", HashEmbeddingProvider())
+    reopened = VectorStore(tmp_path / "chroma", LexicalEmbeddingProvider())
     assert reopened.count() == 3
 
 
 def test_per_provider_collection_naming(store):
-    assert store.collection_name == "kb_hash"
+    """Each provider owns a collection: their vector spaces are not comparable,
+    so mixing them would return confident nonsense."""
+    assert store.collection_name == "kb_lexical"
 
 
 def test_delete_document_purges_chunks(store):
@@ -80,7 +82,7 @@ def test_citations_deduplicate_by_file_and_page(store):
     result = RetrievalResult(
         query="q",
         chunks=store.query(store.provider.embed_query("protein"), top_k=3),
-        grounded=True, provider="hash", threshold=0.0,
+        grounded=True, provider="lexical", threshold=0.0,
     )
     citations = result.citations()
     assert {(c["filename"], c["page"]) for c in citations} <= {("sample.pdf", 1), ("sample.pdf", 2)}
@@ -89,7 +91,12 @@ def test_citations_deduplicate_by_file_and_page(store):
 
 def test_context_text_numbers_passages(store):
     _index_sample(store)
-    result = Retriever(store, top_k=2, similarity_threshold=0.0).retrieve("potassium")
+    # A query whose words appear in two different chunks. "potassium" occurs in
+    # only one, and a zero threshold no longer implies "return everything":
+    # the lexical provider still requires a shared word, which is what stops a
+    # hash collision being presented as a citation.
+    result = Retriever(store, top_k=3, similarity_threshold=0.0).retrieve(
+        "potassium protein")
     context = result.context_text()
     assert context.startswith("[1] (from sample.pdf, page")
     assert "[2]" in context

@@ -16,18 +16,20 @@ from nutrimind.models import (
     WaterLog,
 )
 from nutrimind.utils.time import utcnow
+from tests.conftest import make_user
 
 
-def test_profile_singleton_and_prompt_summary(app):
+def test_profile_lookup_and_prompt_summary(app):
     with app.app_context():
-        assert UserProfile.get_singleton() is None
-        profile = UserProfile(name="Harsh", age=21, gender="male", height_cm=175,
+        owner = make_user().id
+        assert UserProfile.for_user(owner) is None
+        profile = UserProfile(user_id=owner, name="Harsh", age=21, gender="male", height_cm=175,
                               weight_kg=70, activity_level="moderate",
                               food_preference="vegetarian", weight_goal="maintain",
                               medical_conditions=["diabetes"], allergies=[])
         db.session.add(profile)
         db.session.commit()
-        loaded = UserProfile.get_singleton()
+        loaded = UserProfile.for_user(owner)
         assert loaded is not None and loaded.name == "Harsh"
         summary = loaded.summary_for_prompt()
         assert "21-year-old male" in summary and "diabetes" in summary
@@ -35,7 +37,8 @@ def test_profile_singleton_and_prompt_summary(app):
 
 def test_profile_check_constraint(app):
     with app.app_context():
-        db.session.add(UserProfile(name="X", age=500, gender="male", height_cm=175,
+        owner = make_user().id
+        db.session.add(UserProfile(user_id=owner, name="X", age=500, gender="male", height_cm=175,
                                    weight_kg=70, activity_level="moderate",
                                    food_preference="vegan", weight_goal="lose"))
         with pytest.raises(IntegrityError):
@@ -45,17 +48,19 @@ def test_profile_check_constraint(app):
 
 def test_meal_log_since_and_roundtrip(app):
     with app.app_context():
-        old = MealLog(ts=utcnow() - dt.timedelta(days=30), calories=500)
-        new = MealLog(calories=650, items=[{"name": "roti"}], meal_type="lunch")
+        owner = make_user().id
+        old = MealLog(user_id=owner, ts=utcnow() - dt.timedelta(days=30), calories=500)
+        new = MealLog(user_id=owner, calories=650, items=[{"name": "roti"}], meal_type="lunch")
         db.session.add_all([old, new])
         db.session.commit()
-        recent = MealLog.since(7)
+        recent = MealLog.since(7, owner)
         assert len(recent) == 1 and recent[0].to_dict()["calories"] == 650
 
 
 def test_meal_type_constraint(app):
     with app.app_context():
-        db.session.add(MealLog(meal_type="brunch", calories=100))
+        owner = make_user().id
+        db.session.add(MealLog(user_id=owner, meal_type="brunch", calories=100))
         with pytest.raises(IntegrityError):
             db.session.commit()
         db.session.rollback()
@@ -63,18 +68,20 @@ def test_meal_type_constraint(app):
 
 def test_chat_recent_ordering(app):
     with app.app_context():
+        owner = make_user().id
         for index in range(5):
-            db.session.add(ChatMessage(session_id="s1", role="user",
+            db.session.add(ChatMessage(user_id=owner, session_id="s1", role="user",
                                        content=f"message {index}"))
-        db.session.add(ChatMessage(session_id="s2", role="user", content="other"))
+        db.session.add(ChatMessage(user_id=owner, session_id="s2", role="user", content="other"))
         db.session.commit()
-        recent = ChatMessage.recent("s1", limit=3)
+        recent = ChatMessage.recent("s1", owner, limit=3)
         assert [m.content for m in recent] == ["message 2", "message 3", "message 4"]
 
 
 def test_document_status_transitions(app):
     with app.app_context():
-        doc = Document(filename="who.pdf", stored_name="abc123", sha256="f" * 64)
+        owner = make_user().id
+        doc = Document(user_id=owner, filename="who.pdf", stored_name="abc123", sha256="f" * 64)
         db.session.add(doc)
         db.session.commit()
         assert doc.status == "pending"
@@ -97,7 +104,8 @@ def test_document_stored_name_fits_seeded_paths(app):
     long_path = f"knowledge_base/{'icmr-nin-dietary-guidelines-for-indians-' * 4}.pdf"
     assert len(long_path) > 64
     with app.app_context():
-        doc = Document(filename="guidelines.pdf", stored_name=long_path,
+        owner = make_user().id
+        doc = Document(user_id=owner, filename="guidelines.pdf", stored_name=long_path,
                        sha256="a" * 64)
         db.session.add(doc)
         db.session.commit()
@@ -106,25 +114,27 @@ def test_document_stored_name_fits_seeded_paths(app):
 
 def test_water_upsert_and_clamping(app):
     with app.app_context():
-        WaterLog.add_glasses(3)
-        WaterLog.add_glasses(2)
+        owner = make_user().id
+        WaterLog.add_glasses(3, owner)
+        WaterLog.add_glasses(2, owner)
         db.session.commit()
         rows = list(db.session.execute(db.select(WaterLog)).scalars())
         assert len(rows) == 1 and rows[0].glasses == 5
-        WaterLog.add_glasses(100)                 # clamped to 30
+        WaterLog.add_glasses(100, owner)                 # clamped to 30
         db.session.commit()
         assert rows[0].glasses == 30
-        WaterLog.add_glasses(-50)                 # clamped to 0
+        WaterLog.add_glasses(-50, owner)                 # clamped to 0
         db.session.commit()
         assert rows[0].glasses == 0
 
 
 def test_bmi_record_and_meal_plan_roundtrip(app):
     with app.app_context():
-        db.session.add(BMIRecord(height_cm=175, weight_kg=70, bmi=22.9,
+        owner = make_user().id
+        db.session.add(BMIRecord(user_id=owner, height_cm=175, weight_kg=70, bmi=22.9,
                                  category="normal", ideal_weight_min_kg=56.7,
                                  ideal_weight_max_kg=76.3))
-        db.session.add(MealPlan(title="Test plan", targets={"calories": 2000},
+        db.session.add(MealPlan(user_id=owner, title="Test plan", targets={"calories": 2000},
                                 plan={"days": []}))
         db.session.commit()
         plan = db.session.execute(db.select(MealPlan)).scalar_one()

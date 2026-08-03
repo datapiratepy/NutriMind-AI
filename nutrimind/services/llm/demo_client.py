@@ -7,15 +7,24 @@ Purpose (ARCHITECTURE.md §6):
 
 Responses are curated and deterministic; streaming is simulated. Embeddings
 are stable pseudo-vectors derived from a SHA-256 of the text, so the whole
-RAG pipeline (index → search) stays functional — semantically naive, but
-mechanically identical to live mode. Every reply is transparently labeled.
+RAG pipeline (index → search) stays functional — mechanically identical to
+live mode. Every reply is transparently labeled.
 
+**When the prompt carries retrieved passages, the answer is built from them.**
+This backend cannot compose prose, but it must never answer a grounded question
+from an unrelated script: doing so produced replies about bananas and diabetes,
+labelled "Grounded" and carrying three real citations to a Thai cookbook, because
+the keyword table matched the words "banana" and "sugar" *inside the retrieved
+passages*. Citations that do not support the text they accompany are precisely
+the invented evidence this project promises never to produce, so passage handling
+is checked before the scripted table and quotes the sources instead.
 """
 
 from __future__ import annotations
 
 import hashlib
 import random
+import re
 import time
 from typing import Iterator, Sequence
 
@@ -29,6 +38,26 @@ _FOOTER = (
     "\n\n_(Demo mode: this is a built-in sample answer. Configure IBM watsonx.ai "
     "credentials — see docs/IBM_SETUP.md — for live Granite responses.)_"
 )
+
+_GROUNDED_FOOTER = (
+    "\n\n_(Demo mode: the passages above were really retrieved from your "
+    "documents and the citations are real, but they are quoted rather than "
+    "summarised — composing an answer from them needs a language model. "
+    "Configure IBM watsonx.ai for that; see docs/IBM_SETUP.md.)_"
+)
+
+#: Matches one entry of ``RetrievalResult.context_text()``:
+#: ``[1] (from guide.pdf, page 4)\n<passage text>``
+_PASSAGE_ENTRY = re.compile(
+    r"\[(\d+)\] \(from (.+?), page (\d+)\)\n(.*?)(?=\n\[\d+\] \(from |\Z)",
+    re.DOTALL)
+
+#: The agents append the user's question after the passages under one of these.
+_QUESTION_MARKERS = ("\n\nQUESTION:", "\n\nUSER REQUEST:")
+
+#: Longest quote taken from any single passage, so one large chunk cannot
+#: crowd out the others.
+_QUOTE_CHARS = 320
 
 #: (keywords, response) pairs checked in order against the last user message.
 #: Marker entries FIRST: they match distinctive agent-prompt phrases so the
@@ -119,15 +148,85 @@ _DEFAULT_RESPONSE = (
 )
 
 
+def parse_passages(prompt: str) -> list[tuple[int, str, int, str]]:
+    """Pull ``(number, filename, page, text)`` out of a prompt's PASSAGES block.
+
+    Returns ``[]`` when the prompt carries no passages, which is how the caller
+    distinguishes a grounded turn from an ordinary one.
+    """
+    marker = "PASSAGES:\n"
+    start = prompt.find(marker)
+    if start == -1:
+        return []
+
+    region = prompt[start + len(marker):]
+    for question_marker in _QUESTION_MARKERS:
+        cut = region.find(question_marker)
+        if cut != -1:
+            region = region[:cut]
+
+    return [
+        (int(number), filename, int(page), " ".join(text.split()))
+        for number, filename, page, text in _PASSAGE_ENTRY.findall(region)
+        if text.strip()
+    ]
+
+
+def _answer_from_passages(passages: list[tuple[int, str, int, str]]) -> str:
+    """Compose a grounded answer by quoting the retrieved passages.
+
+    Extractive on purpose. A real model would summarise these; this backend can
+    only quote them, and quoting is the honest option — the alternative that was
+    here before answered from an unrelated script while the UI attached these
+    same citations to it.
+
+    The ``[n]`` markers match the numbering the agent put in the prompt, so the
+    citation list the UI renders lines up with the text.
+    """
+    lines = ["Here is what your own documents say:", ""]
+    for number, filename, page, text in passages[:3]:
+        quote = text if len(text) <= _QUOTE_CHARS else text[:_QUOTE_CHARS].rstrip() + "…"
+        lines.append(f"> {quote}")
+        lines.append(f"— {filename}, page {page} [{number}]")
+        lines.append("")
+    return "\n".join(lines).rstrip()
+
+
 def _pick_response(messages: Sequence[Message]) -> str:
-    last_user = next(
+    raw = next(
         (m.get("content", "") for m in reversed(list(messages)) if m.get("role") == "user"),
         "",
-    ).lower()
+    )
+
+    # Checked before the keyword table, and deliberately so. The table matches
+    # against the whole prompt, which includes the retrieved passages — a Thai
+    # recipe containing "sugar" and "banana" therefore triggered the diabetes
+    # script, and the answer was presented as grounded with real citations to a
+    # cookbook. Whenever passages are present they are the only legitimate source
+    # for the answer.
+    passages = parse_passages(raw)
+    if passages:
+        return _answer_from_passages(passages)
+
+    lowered = raw.lower()
     for keywords, response in _SCRIPTED:
-        if any(keyword in last_user for keyword in keywords):
+        if any(keyword in lowered for keyword in keywords):
             return response
     return _DEFAULT_RESPONSE
+
+
+def _reply(messages: Sequence[Message]) -> str:
+    """Full demo reply, with the footer that matches how it was produced.
+
+    A grounded reply gets a different note: saying "this is a built-in sample
+    answer" under text quoted from the user's own PDF would be untrue, and the
+    distinction is exactly what was missing when canned text shipped with real
+    citations attached.
+    """
+    body = _pick_response(messages)
+    grounded = any(parse_passages(m.get("content", ""))
+                   for m in messages if m.get("role") == "user")
+    return body + (_GROUNDED_FOOTER if grounded else _FOOTER)
 
 
 class DemoClient(LLMClient):
@@ -145,7 +244,7 @@ class DemoClient(LLMClient):
         max_tokens: int = 512,      # noqa: ARG002 — accepted for interface parity
         temperature: float = 0.2,   # noqa: ARG002
     ) -> ChatResult:
-        return ChatResult(text=_pick_response(messages) + _FOOTER, model_id=_DEMO_MODEL_ID)
+        return ChatResult(text=_reply(messages), model_id=_DEMO_MODEL_ID)
 
     def chat_stream(
         self,

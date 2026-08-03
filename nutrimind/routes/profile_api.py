@@ -14,11 +14,12 @@ Endpoints
 from __future__ import annotations
 
 from flask import Blueprint, request
+from flask_login import login_required
 
 from nutrimind.exceptions import ValidationError
 from nutrimind.extensions import db
 from nutrimind.models import BMIRecord, UserProfile, WaterLog
-from nutrimind.routes import ok
+from nutrimind.routes import current_user_id, ok
 from nutrimind.services import bmi_service
 from nutrimind.services.nutrition_service import targets_for_profile
 from nutrimind.utils.time import utctoday
@@ -31,10 +32,21 @@ from nutrimind.utils.validators import (
 profile_api = Blueprint("profile_api", __name__, url_prefix="/api")
 
 
+@profile_api.before_request
+@login_required
+def _require_login():
+    """Default-deny: every endpoint in this blueprint needs a session.
+
+    Applied at the blueprint rather than per route so that adding an
+    endpoint cannot accidentally expose one account's data to another.
+    """
+
+
 def _record_bmi(height_cm: float, weight_kg: float) -> BMIRecord:
     """Persist a BMI snapshot for the trend chart; returns the new record."""
     result = bmi_service.assess(height_cm, weight_kg)
     record = BMIRecord(
+        user_id=current_user_id(),
         height_cm=height_cm,
         weight_kg=weight_kg,
         bmi=result.bmi,
@@ -48,7 +60,7 @@ def _record_bmi(height_cm: float, weight_kg: float) -> BMIRecord:
 
 @profile_api.get("/profile")
 def get_profile():
-    profile = UserProfile.get_singleton()
+    profile = UserProfile.for_user(current_user_id())
     return ok({"profile": profile.to_dict() if profile else None})
 
 
@@ -59,12 +71,12 @@ def upsert_profile():
     if not cleaned:
         raise ValidationError("No valid fields provided.")
 
-    profile = UserProfile.get_singleton()
+    profile = UserProfile.for_user(current_user_id())
     created = profile is None
     if created:
         if partial:
             raise ValidationError("No profile exists yet — send the full profile first.")
-        profile = UserProfile(**cleaned)
+        profile = UserProfile(user_id=current_user_id(), **cleaned)
         db.session.add(profile)
     else:
         body_changed = any(getattr(profile, f) != v for f, v in cleaned.items())
@@ -81,7 +93,7 @@ def upsert_profile():
 
 @profile_api.get("/targets")
 def get_targets():
-    profile = UserProfile.get_singleton()
+    profile = UserProfile.for_user(current_user_id())
     if profile is None:
         raise ValidationError("No profile yet — create your profile first.",
                               hint="PUT /api/profile with your details.")
@@ -100,7 +112,8 @@ def compute_bmi():
 @profile_api.get("/bmi/history")
 def bmi_history():
     rows = db.session.execute(
-        db.select(BMIRecord).order_by(BMIRecord.ts.desc()).limit(50)
+        db.select(BMIRecord).where(BMIRecord.user_id == current_user_id())
+        .order_by(BMIRecord.ts.desc()).limit(50)
     ).scalars()
     return ok({"records": [r.to_dict() for r in rows]})
 
@@ -109,15 +122,13 @@ def bmi_history():
 def log_water():
     data = request.get_json(silent=True) or {}
     delta = int(validate_range(data.get("glasses", 1), "glasses", -5, WATER_GLASSES_RANGE[1]))
-    row = WaterLog.add_glasses(delta)
+    row = WaterLog.add_glasses(delta, current_user_id())
     db.session.commit()
     return ok({"water": row.to_dict()})
 
 
 @profile_api.get("/water/today")
 def water_today():
-    row = db.session.execute(
-        db.select(WaterLog).where(WaterLog.date == utctoday())
-    ).scalar_one_or_none()
+    row = WaterLog.for_day(utctoday(), current_user_id())
     return ok({"water": row.to_dict() if row else {
         "date": utctoday().isoformat(), "glasses": 0}})

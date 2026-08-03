@@ -80,7 +80,7 @@
     button.innerHTML = `<span class="spinner-border spinner-border-sm me-1"
       role="status" aria-hidden="true"></span>Generating…`;
     try {
-      const response = await fetch(`/api/export/meal-plan/${currentPlanId}.pdf`);
+      const response = await NM.fetch(`/api/export/meal-plan/${currentPlanId}.pdf`);
       if (!response.ok) {
         const body = await response.json().catch(() => null);
         throw new Error((body && body.error && body.error.message) ||

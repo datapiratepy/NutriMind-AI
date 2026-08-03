@@ -25,6 +25,8 @@ class MealLog(db.Model):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        db.ForeignKey("users.id", ondelete="CASCADE"), index=True)
     ts: Mapped[dt.datetime] = mapped_column(default=utcnow, index=True)
     meal_type: Mapped[str] = mapped_column(db.String(12), default="other")
     raw_text: Mapped[Optional[str]] = mapped_column(db.Text)
@@ -38,11 +40,12 @@ class MealLog(db.Model):
     suggestions: Mapped[Optional[str]] = mapped_column(db.Text)
 
     @classmethod
-    def since(cls, days: int) -> list["MealLog"]:
-        """Logs from the last ``days`` days, oldest first."""
+    def since(cls, days: int, user_id: int) -> list["MealLog"]:
+        """One user's logs from the last ``days`` days, oldest first."""
         cutoff = utcnow() - dt.timedelta(days=days)
         return list(db.session.execute(
-            db.select(cls).where(cls.ts >= cutoff).order_by(cls.ts)
+            db.select(cls).where(cls.ts >= cutoff, cls.user_id == user_id)
+            .order_by(cls.ts)
         ).scalars())
 
     def to_dict(self) -> dict:
@@ -68,6 +71,8 @@ class MealPlan(db.Model):
     __tablename__ = "meal_plans"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        db.ForeignKey("users.id", ondelete="CASCADE"), index=True)
     created_at: Mapped[dt.datetime] = mapped_column(default=utcnow, index=True)
     title: Mapped[str] = mapped_column(db.String(120))
     targets: Mapped[dict] = mapped_column(db.JSON, default=dict)

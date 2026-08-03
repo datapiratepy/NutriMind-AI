@@ -22,7 +22,7 @@ def _parse_sse(raw: str) -> list[tuple[str, dict]]:
 
 # -- non-streaming ------------------------------------------------------------
 
-def test_chat_non_streaming_full_metadata(client):
+def test_chat_non_streaming_full_metadata(client, user):
     response = client.post("/api/chat", json={
         "message": "how much protein is in paneer?", "stream": False})
     assert response.status_code == 200
@@ -33,19 +33,19 @@ def test_chat_non_streaming_full_metadata(client):
     assert meta["routing"]["method"] == "rules"
     assert meta["routing"]["reason"]
     assert meta["response_source"] in ("grounded", "general_knowledge")
-    assert meta["embedding_provider"] in ("hash", "local", "watsonx")
+    assert meta["embedding_provider"] in ("lexical", "local", "watsonx")
     assert meta["llm_mode"] == "demo"
     assert "generation_ms" in meta and "tokens" in meta
     assert isinstance(meta["citations"], list)
 
 
-def test_chat_persists_history_with_agent_metadata(client):
+def test_chat_persists_history_with_agent_metadata(client, user):
     response = client.post("/api/chat", json={
         "message": "hello", "session_id": "test-session-1", "stream": False})
     assert response.status_code == 200
 
     with client.application.app_context():
-        rows = ChatMessage.recent("test-session-1", limit=10)
+        rows = ChatMessage.recent("test-session-1", user["id"], limit=10)
         assert [r.role for r in rows] == ["user", "assistant"]
         assistant = rows[1]
         assert assistant.agent == "coordinator"
@@ -54,7 +54,7 @@ def test_chat_persists_history_with_agent_metadata(client):
         assert assistant.created_at is not None
 
 
-def test_chat_history_endpoint(client):
+def test_chat_history_endpoint(client, user):
     client.post("/api/chat", json={"message": "hello",
                                    "session_id": "hist-1", "stream": False})
     body = client.get("/api/chat/history?session_id=hist-1").get_json()
@@ -62,17 +62,17 @@ def test_chat_history_endpoint(client):
     assert body["messages"][1]["agent"] == "coordinator"
 
 
-def test_session_continuity(client):
+def test_session_continuity(client, user):
     first = client.post("/api/chat", json={
         "message": "hello", "stream": False}).get_json()
     session_id = first["session_id"]
     client.post("/api/chat", json={"message": "what is my bmi",
                                    "session_id": session_id, "stream": False})
     with client.application.app_context():
-        assert len(ChatMessage.recent(session_id, limit=10)) == 4
+        assert len(ChatMessage.recent(session_id, user["id"], limit=10)) == 4
 
 
-def test_chat_validation_errors(client):
+def test_chat_validation_errors(client, user):
     assert client.post("/api/chat", json={}).status_code == 400
     assert client.post("/api/chat", json={"message": "   "}).status_code == 400
     long_message = "x" * 3000
@@ -82,7 +82,7 @@ def test_chat_validation_errors(client):
 
 # -- streaming ----------------------------------------------------------------
 
-def test_chat_streaming_event_sequence(client):
+def test_chat_streaming_event_sequence(client, user):
     response = client.post("/api/chat", json={
         "message": "what foods are rich in iron?"})
     assert response.status_code == 200
@@ -105,18 +105,18 @@ def test_chat_streaming_event_sequence(client):
     assert tokens_text == final["text"]              # stream matches final
 
 
-def test_chat_streaming_persists_history(client):
+def test_chat_streaming_persists_history(client, user):
     response = client.post("/api/chat", json={
         "message": "hello", "session_id": "stream-hist"})
     events = _parse_sse(response.get_data(as_text=True))
     assert events[-1][0] == "final"
     with client.application.app_context():
-        assert len(ChatMessage.recent("stream-hist", limit=10)) == 2
+        assert len(ChatMessage.recent("stream-hist", user["id"], limit=10)) == 2
 
 
 # -- system endpoints keep reporting correctly ---------------------------------
 
-def test_health_reports_demo_mode(client):
+def test_health_reports_demo_mode(client, user):
     response = client.get("/api/health")
     assert response.status_code == 200
     body = response.get_json()
@@ -124,7 +124,7 @@ def test_health_reports_demo_mode(client):
     assert body["database"] == "ok"
 
 
-def test_health_returns_503_when_database_is_unusable(client, monkeypatch):
+def test_health_returns_503_when_database_is_unusable(client, user, monkeypatch):
     """A degraded app must say so in the status code, not only in the body.
 
     Load balancers and uptime monitors read the code; returning 200 with
@@ -140,27 +140,27 @@ def test_health_returns_503_when_database_is_unusable(client, monkeypatch):
     assert body["database"] == "error"
 
 
-def test_system_info_diagnostics(client):
+def test_system_info_diagnostics(client, user):
     body = client.get("/api/system/info").get_json()
     assert body["app"]["name"] == "NutriMind AI"
     assert body["mode"]["demo_active"] is True
     assert body["ibm"]["chat_model"].startswith("ibm/")
     chroma = body["storage"]["chroma"]
-    assert chroma["provider"] in ("hash", "local", "watsonx")
+    assert chroma["provider"] in ("lexical", "local", "watsonx")
     assert chroma["collection"].startswith("kb_")
 
 
-def test_unknown_api_route_is_json_404(client):
+def test_unknown_api_route_is_json_404(client, user):
     response = client.get("/api/nope")
     assert response.status_code == 404
     assert response.get_json()["error"]["code"] == "not_found"
 
 
-def test_request_id_header_present(client):
+def test_request_id_header_present(client, user):
     assert len(client.get("/api/health").headers.get("X-Request-ID", "")) == 8
 
 
-def test_chat_sessions_listing(client):
+def test_chat_sessions_listing(client, user):
     client.post("/api/chat", json={"message": "hello",
                                    "session_id": "sess-a", "stream": False})
     client.post("/api/chat", json={"message": "what is my bmi",

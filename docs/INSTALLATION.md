@@ -90,9 +90,23 @@ python run.py
 separate setup step. (Production does not do this automatically — see
 [DEPLOYMENT.md](DEPLOYMENT.md#database-migrations) for why.)
 
-Open **http://127.0.0.1:5000**. The topbar shows **Demo mode**: every
-feature works with deterministic sample AI responses and a mechanically
-functional RAG pipeline. Perfect for a first look or an offline evaluation.
+Open **http://127.0.0.1:5000** and create an account — everything you store
+(profile, meals, chats, uploaded documents) belongs to it and is private to it.
+The topbar shows **Demo mode**: every feature works with deterministic sample
+AI responses and a mechanically functional RAG pipeline.
+
+You can also create an account without the browser:
+
+```bash
+python scripts/manage_users.py create you@example.com
+```
+
+**Upgrading an existing install?** Data created before accounts existed is
+adopted into a placeholder account during the migration. Claim it with:
+
+```bash
+python scripts/manage_users.py set-password legacy@nutrimind.invalid
+```
 
 ## 5. Run — IBM Live mode
 
@@ -120,15 +134,16 @@ functional RAG pipeline. Perfect for a first look or an offline evaluation.
 Everything is optional in demo mode. See `.env.example` for the full,
 commented list: IBM credentials (`WATSONX_APIKEY`, `WATSONX_PROJECT_ID`,
 `WATSONX_URL`), model IDs, `APP_MODE` (live/demo/auto), `EMBEDDINGS_PROVIDER`,
-`FLASK_SECRET_KEY`, `MAX_UPLOAD_MB`, and the RAG tuning knobs.
+`FLASK_SECRET_KEY`, `SESSION_DAYS`, `TRUSTED_PROXY_HOPS`, `MAX_UPLOAD_MB`,
+and the RAG tuning knobs.
 
 ## 7. Run the tests
 
 Requires `requirements-dev.txt` (see step 3).
 
 ```bash
-pytest tests/ -q                                  # 180 tests, ~20 s
-pytest tests/ --cov=nutrimind --cov-report=term   # with coverage (~88%)
+pytest tests/ -q                                  # 303 tests
+pytest tests/ --cov=nutrimind --cov-report=term   # with coverage (~89%)
 ruff check .                                      # lint, as CI runs it
 ```
 

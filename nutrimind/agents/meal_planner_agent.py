@@ -122,7 +122,10 @@ class MealPlannerAgent(BaseAgent):
         from nutrimind.extensions import db
         from nutrimind.models import MealPlan
 
-        row = MealPlan(title=plan["title"], targets=targets.to_dict(), plan=plan)
+        # Owner comes from the toolbox, which the route built from the session —
+        # never from anything the model produced.
+        row = MealPlan(user_id=request.toolbox.user_id, title=plan["title"],
+                       targets=targets.to_dict(), plan=plan)
         db.session.add(row)
         db.session.commit()
 

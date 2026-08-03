@@ -107,14 +107,31 @@ class VectorStore:
 
     # -- reads ----------------------------------------------------------------
 
-    def query(self, embedding: Sequence[float], *, top_k: int) -> list[RetrievedChunk]:
-        """Nearest chunks for a query vector, best first."""
+    def query(self, embedding: Sequence[float], *, top_k: int,
+              document_ids: Sequence[int] | None = None) -> list[RetrievedChunk]:
+        """Nearest chunks for a query vector, best first.
+
+        :param document_ids: restrict the search to these documents. This is how
+            tenancy is enforced in the vector store, which — unlike the relational
+            tables — has no ``user_id`` column and no foreign keys. The ids come
+            from the database, which is the authority on who owns what, so a
+            chunk can only be returned to someone who owns its document.
+
+            ``None`` means unrestricted and must never be used to serve a request;
+            it exists for maintenance tooling and tests. An **empty** sequence
+            means "this user owns nothing", which correctly returns nothing
+            rather than everything.
+        """
         if self.count() == 0:
+            return []
+        if document_ids is not None and not document_ids:
             return []
         try:
             result = self._collection.query(
                 query_embeddings=[list(embedding)],
                 n_results=min(top_k, self.count()),
+                where=({"document_id": {"$in": [int(i) for i in document_ids]}}
+                       if document_ids is not None else None),
                 include=["documents", "metadatas", "distances"],
             )
         except Exception as exc:  # noqa: BLE001

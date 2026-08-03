@@ -12,32 +12,46 @@ import datetime as dt
 from collections import defaultdict
 
 from flask import Blueprint
+from flask_login import login_required
 
 from nutrimind.extensions import db
 from nutrimind.models import BMIRecord, ChatMessage, MealLog, UserProfile, WaterLog
-from nutrimind.routes import ok
+from nutrimind.routes import current_user_id, ok
 from nutrimind.services.health_score_service import compute_health_score
 from nutrimind.services.nutrition_service import targets_for_profile
 from nutrimind.utils.time import utcnow, utctoday
 
 dashboard_api = Blueprint("dashboard_api", __name__, url_prefix="/api")
 
+
+@dashboard_api.before_request
+@login_required
+def _require_login():
+    """Default-deny: every endpoint in this blueprint needs a session.
+
+    Applied at the blueprint rather than per route so that adding an
+    endpoint cannot accidentally expose one account's data to another.
+    """
+
 _WINDOW_DAYS = 7
 
 
 @dashboard_api.get("/dashboard/summary")
 def summary():
-    profile = UserProfile.get_singleton()
+    user_id = current_user_id()
+    profile = UserProfile.for_user(user_id)
     # UTC date: all timestamps (MealLog.ts, WaterLog.date) are stored in UTC,
     # so "today" must be the UTC day or buckets misalign around midnight.
     today = utctoday()
-    meals = MealLog.since(_WINDOW_DAYS)
+    meals = MealLog.since(_WINDOW_DAYS, user_id)
     water_rows = list(db.session.execute(
         db.select(WaterLog).where(
+            WaterLog.user_id == user_id,
             WaterLog.date >= today - dt.timedelta(days=_WINDOW_DAYS - 1))
     ).scalars())
     latest_bmi = db.session.execute(
-        db.select(BMIRecord).order_by(BMIRecord.ts.desc()).limit(1)
+        db.select(BMIRecord).where(BMIRecord.user_id == user_id)
+        .order_by(BMIRecord.ts.desc()).limit(1)
     ).scalar_one_or_none()
 
     targets = targets_for_profile(profile).to_dict() if profile else None
@@ -63,6 +77,7 @@ def summary():
     window_start_dt = utcnow() - dt.timedelta(days=_WINDOW_DAYS)
     assistant_msgs = list(db.session.execute(
         db.select(ChatMessage).where(ChatMessage.role == "assistant",
+                                     ChatMessage.user_id == user_id,
                                      ChatMessage.created_at >= window_start_dt)
     ).scalars())
     ai_activity = {

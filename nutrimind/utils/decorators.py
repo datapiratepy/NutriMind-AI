@@ -24,6 +24,40 @@ F = TypeVar("F", bound=Callable)
 _CALL_LOG: dict[str, dict[str, deque]] = defaultdict(lambda: defaultdict(deque))
 
 
+def reset_rate_limits() -> None:
+    """Forget every recorded call.
+
+    Process-global state, so without this the test suite shares one bucket
+    across every test: roughly 180 sign-ins from ``127.0.0.1`` trip the login
+    limiter partway through the run and every later test fails to authenticate.
+    Also useful for an operator who has locked themselves out in development.
+    """
+    _CALL_LOG.clear()
+
+
+def configure_proxy_awareness(app: Flask, hops: int) -> None:
+    """Trust ``X-Forwarded-For`` from ``hops`` reverse proxies, or none.
+
+    Behind a reverse proxy ``request.remote_addr`` is the *proxy's* address, so
+    every visitor shares one identity. For rate limiting that is not a small
+    inaccuracy: the login limiter would count all users together and lock the
+    whole site out after ten attempts by anybody.
+
+    Off by default (``hops=0``) because trusting the header when nothing strips
+    it is worse than not trusting it at all — a client can then send any
+    ``X-Forwarded-For`` it likes and be rate-limited as a different address, or
+    appear in logs as one. Set ``TRUSTED_PROXY_HOPS`` to the number of proxies
+    that actually sit in front of the app, and only those.
+    """
+    if hops <= 0:
+        return
+    from werkzeug.middleware.proxy_fix import ProxyFix
+
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=hops, x_proto=hops,
+                            x_host=hops, x_prefix=hops)
+    logger.info("trusting X-Forwarded-* from %d proxy hop(s)", hops)
+
+
 def init_request_middleware(app: Flask) -> None:
     """Attach request-ID generation, timing and access logging to the app."""
 

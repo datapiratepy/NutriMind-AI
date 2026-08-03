@@ -1,0 +1,31 @@
+{# Shared chrome for the four auth screens: centred card, flashed messages,
+   CSRF token. Kept in one place so a change to the token field or the error
+   styling cannot apply to three forms and miss the fourth. #}
+{% extends "base.html" %}
+
+{% block page %}
+<div class="d-flex justify-content-center align-items-start py-5 px-3">
+  <div class="nm-card p-4 p-md-5" style="max-width:26rem;width:100%">
+
+    <h1 class="h4 mb-1">{% block form_title %}{% endblock %}</h1>
+    <p class="text-2 mb-4" style="font-size:.9rem">{% block form_subtitle %}{% endblock %}</p>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="alert {{ 'alert-danger' if category == 'error' else 'alert-success' }} py-2"
+             role="alert" style="font-size:.9rem">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    <form method="post" novalidate>
+      {# Flask-WTF validates this on every POST; without it the request is rejected. #}
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% block form_fields %}{% endblock %}
+    </form>
+
+    <div class="mt-4 pt-3 border-top text-2" style="font-size:.86rem">
+      {% block form_footer %}{% endblock %}
+    </div>
+  </div>
+</div>
+{% endblock %}

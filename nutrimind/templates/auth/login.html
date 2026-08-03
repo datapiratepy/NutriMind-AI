@@ -1,0 +1,32 @@
+{% extends "auth/_form_shell.html" %}
+{% block title %}Sign in{% endblock %}
+{% block form_title %}Sign in{% endblock %}
+{% block form_subtitle %}Welcome back to NutriMind.{% endblock %}
+
+{% block form_fields %}
+  <input type="hidden" name="next" value="{{ next or '' }}">
+
+  <div class="mb-3">
+    <label class="form-label" for="email">Email</label>
+    <input class="form-control" type="email" id="email" name="email"
+           value="{{ email or '' }}" autocomplete="username" required autofocus>
+  </div>
+
+  <div class="mb-3">
+    <label class="form-label" for="password">Password</label>
+    <input class="form-control" type="password" id="password" name="password"
+           autocomplete="current-password" required>
+  </div>
+
+  <div class="form-check mb-3">
+    <input class="form-check-input" type="checkbox" id="remember" name="remember">
+    <label class="form-check-label text-2" for="remember">Keep me signed in</label>
+  </div>
+
+  <button class="btn btn-primary w-100" type="submit">Sign in</button>
+{% endblock %}
+
+{% block form_footer %}
+  <div>New here? <a href="{{ url_for('auth.register') }}">Create an account</a></div>
+  <div class="mt-1"><a href="{{ url_for('auth.forgot_password') }}">Forgot your password?</a></div>
+{% endblock %}

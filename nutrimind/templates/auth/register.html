@@ -1,0 +1,32 @@
+{% extends "auth/_form_shell.html" %}
+{% block title %}Create account{% endblock %}
+{% block form_title %}Create your account{% endblock %}
+{% block form_subtitle %}Your profile, meals and documents stay private to you.{% endblock %}
+
+{% block form_fields %}
+  <div class="mb-3">
+    <label class="form-label" for="display_name">Name <span class="text-2">(optional)</span></label>
+    <input class="form-control" type="text" id="display_name" name="display_name"
+           value="{{ display_name or '' }}" autocomplete="name" maxlength="80">
+  </div>
+
+  <div class="mb-3">
+    <label class="form-label" for="email">Email</label>
+    <input class="form-control" type="email" id="email" name="email"
+           value="{{ email or '' }}" autocomplete="username" required>
+  </div>
+
+  <div class="mb-3">
+    <label class="form-label" for="password">Password</label>
+    <input class="form-control" type="password" id="password" name="password"
+           autocomplete="new-password" minlength="10" required>
+    <div class="form-text text-2">At least 10 characters. Length matters more than
+      mixing in symbols, so a memorable phrase works well.</div>
+  </div>
+
+  <button class="btn btn-primary w-100" type="submit">Create account</button>
+{% endblock %}
+
+{% block form_footer %}
+  Already have an account? <a href="{{ url_for('auth.login') }}">Sign in</a>
+{% endblock %}

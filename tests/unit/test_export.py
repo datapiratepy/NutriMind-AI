@@ -7,6 +7,7 @@ from pypdf import PdfReader
 from nutrimind.extensions import db
 from nutrimind.models import MealPlan, UserProfile
 from nutrimind.services.export_service import build_meal_plan_pdf
+from tests.conftest import make_user
 
 _PLAN = {
     "title": "Test day plan",
@@ -28,8 +29,9 @@ def _pdf_text(data: bytes) -> str:
 
 def test_pdf_generation_contains_all_sections(app):
     with app.app_context():
-        plan = MealPlan(title="Test day plan", targets=_TARGETS, plan=_PLAN)
-        profile = UserProfile(name="Harsh", age=21, gender="male", height_cm=175,
+        owner = make_user().id
+        plan = MealPlan(user_id=owner, title="Test day plan", targets=_TARGETS, plan=_PLAN)
+        profile = UserProfile(user_id=owner, name="Harsh", age=21, gender="male", height_cm=175,
                               weight_kg=70, activity_level="moderate",
                               food_preference="vegetarian", weight_goal="maintain")
         db.session.add_all([plan, profile])
@@ -46,7 +48,8 @@ def test_pdf_generation_contains_all_sections(app):
 
 def test_pdf_generation_without_profile(app):
     with app.app_context():
-        plan = MealPlan(title="Anon plan", targets=_TARGETS, plan=_PLAN)
+        owner = make_user().id
+        plan = MealPlan(user_id=owner, title="Anon plan", targets=_TARGETS, plan=_PLAN)
         db.session.add(plan)
         db.session.commit()
         data = build_meal_plan_pdf(plan, None)
@@ -57,7 +60,8 @@ def test_pdf_generation_without_profile(app):
 def test_pdf_deterministic_structure(app):
     """Same plan renders to a valid, similar-size PDF (timestamps vary)."""
     with app.app_context():
-        plan = MealPlan(title="Repeat plan", targets=_TARGETS, plan=_PLAN)
+        owner = make_user().id
+        plan = MealPlan(user_id=owner, title="Repeat plan", targets=_TARGETS, plan=_PLAN)
         db.session.add(plan)
         db.session.commit()
         first = build_meal_plan_pdf(plan)

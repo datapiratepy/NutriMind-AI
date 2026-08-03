@@ -42,14 +42,19 @@ that ran.
 
 **RAG with honest grounding** — upload nutrition PDFs; they are chunked
 (page-bounded, overlapping: 800 chars with 120-char overlap), embedded, and indexed
-in ChromaDB (cosine, top-k 5, similarity threshold 0.35). Answers above
-the similarity threshold cite sources by filename and page; anything else is
-visibly labeled *general knowledge*. No invented evidence, ever.
+in ChromaDB (cosine, top-k 5). Answers above the provider's similarity
+threshold cite sources by filename and page; anything else is visibly labeled
+*general knowledge*. No invented evidence, ever.
 
 **Deterministic nutrition engine** — Mifflin-St Jeor BMR/TDEE, macro targets,
 an 85-food curated composition table (Indian + international, Hindi aliases,
 micronutrients), WHO BMI categories, and an explainable 0-100 health score
 whose five components are shown with their reasons.
+
+**Multi-user by construction** — email/password accounts with session cookies;
+every profile, meal, plan, chat and document belongs to exactly one account,
+enforced by foreign keys and by an ownership filter on vector retrieval so one
+user's questions can never be grounded in another's documents.
 
 **Product-grade UX** — streaming chat (SSE) with live progress, an AI workflow
 panel built from response metadata, dark/light themes, dashboard with
@@ -134,21 +139,30 @@ Three providers, resolved by `EMBEDDINGS_PROVIDER` (`nutrimind/retrieval/embeddi
 |---|---|---|---|---|
 | `watsonx` | `ibm/granite-embedding-278m-multilingual` | 768 | yes | `EMBEDDINGS_PROVIDER=watsonx`, or `auto` **with** IBM credentials |
 | `local` | `sentence-transformers/all-MiniLM-L6-v2` | 384 | yes | `EMBEDDINGS_PROVIDER=local`, or `auto` with no credentials **and** `sentence-transformers` installed |
-| `hash` | SHA-256 → seeded RNG → L2-normalised vector | 384 | **no** | `auto`, no credentials, `sentence-transformers` **not** installed |
+| `lexical` | hashing trick over word tokens (signed, sublinear TF) | 2048 | keyword only | `auto`, no credentials, `sentence-transformers` **not** installed |
 
 `sentence-transformers` is **commented out** in `requirements.txt` (it pulls
-PyTorch), so a default install with no IBM credentials resolves to **`hash`**.
+PyTorch), so a default install with no IBM credentials resolves to **`lexical`**.
 
-**Be clear about what the hash provider is:** it produces deterministic
-pseudo-vectors that are *semantically meaningless*. Two passages about protein get
-unrelated vectors. It exists so the full pipeline — ingest → chunk → embed → index →
-search → threshold → cite — stays mechanically functional and testable with zero
-credentials and zero heavy dependencies. It is never selected silently: resolution
-logs a warning, and the active provider is reported at `/api/system/info` and in
-every chat response's `meta.embedding_provider`.
+**Be clear about what the lexical provider is:** it is keyword search expressed as
+vectors — the hashing trick over word tokens, with signed buckets so collisions
+cancel rather than accumulate. It finds passages that *share words* with your
+question, so uploading a cookbook and asking for "pad thai" works. It cannot
+connect "aubergine" to "eggplant"; that needs a real embedding model. It exists so
+the full pipeline — ingest → chunk → embed → index → search → threshold → cite —
+is genuinely usable with zero credentials and zero heavy dependencies. It is never
+selected silently: resolution logs a warning, `/api/system/info` reports it, every
+chat response carries `meta.embedding_provider`, and the search UI says plainly
+when a miss is due to keyword-only matching.
+
+**Similarity thresholds belong to a vector space, not to the application.** A short
+query against a long chunk cannot reach the same cosine in a sparse lexical space
+as in a dense semantic one, so each provider supplies its own default (semantic
+0.35, lexical 0.12, both overridable with `RAG_SIMILARITY_THRESHOLD`). Applying one
+number to both is how "retrieval returns nothing" happens.
 
 Each provider gets **its own Chroma collection** (`kb_watsonx`, `kb_local`,
-`kb_hash`) because the vector spaces are not comparable — a 384-dim hash vector must
+`kb_lexical`) because the vector spaces are not comparable — a 384-dim hash vector must
 never be searched against 768-dim Granite vectors.
 
 **What does *not* change between modes:** chunking, the vector store, the
@@ -179,14 +193,15 @@ All configuration is environment-driven (see [.env.example](.env.example)):
 
 ```bash
 pip install -r requirements.txt -r requirements-dev.txt
-pytest tests/ -q                                   # 180 tests
-pytest tests/ --cov=nutrimind --cov-report=term    # ~88% coverage
+pytest tests/ -q                                   # 303 tests
+pytest tests/ --cov=nutrimind --cov-report=term    # ~89% coverage
 ruff check .                                       # lint, as CI runs it
 ```
 
 The suite runs entirely in demo mode — no API keys required — and covers the
 deterministic services, models, RAG pipeline, agents, routing rules, chat SSE
-protocol, configuration defaults and PDF export.
+protocol, configuration defaults, PDF export, authentication, and — most
+importantly — that no account can reach another account's data.
 
 CI runs on every push (GitHub Actions): ruff, then the suite with a coverage
 floor, then an advisory `pip-audit` of the pinned dependencies.
@@ -203,7 +218,7 @@ clone, and on a configured developer machine.
 **Intentionally uncovered:** `watsonx_client.py` network paths (the pure logic
 is tested; live calls are exercised by `scripts/check_watsonx.py` against real
 credentials), the optional `sentence-transformers` provider, and the live-mode
-branches of the LLM factory. CI enforces a coverage floor of 87% — a ratchet
+branches of the LLM factory. CI enforces a coverage floor of 88% — a ratchet
 against erosion rather than a target to chase.
 
 > Note: `chromadb` is required to run the suite — roughly 30 tests construct a

@@ -30,6 +30,7 @@ import uuid
 from typing import Iterator
 
 from flask import Blueprint, Response, current_app, g, request, stream_with_context
+from flask_login import login_required
 
 from nutrimind.agents import get_coordinator
 from nutrimind.agents.base_agent import AgentRequest
@@ -37,7 +38,7 @@ from nutrimind.agents.tools import Toolbox
 from nutrimind.exceptions import NutriMindError, ValidationError
 from nutrimind.extensions import db
 from nutrimind.models import ChatMessage, UserProfile
-from nutrimind.routes import ok
+from nutrimind.routes import current_user_id, ok
 from nutrimind.services.llm import get_llm_client
 from nutrimind.services.rag_service import get_rag_service
 from nutrimind.utils.decorators import rate_limit
@@ -47,6 +48,12 @@ logger = logging.getLogger(__name__)
 
 chat_api = Blueprint("chat_api", __name__, url_prefix="/api")
 
+
+@chat_api.before_request
+@login_required
+def _require_login():
+    """Default-deny: every endpoint in this blueprint needs a session."""
+
 _HISTORY_TURNS = 6  # prior turns forwarded to conversational agents
 
 
@@ -54,30 +61,37 @@ def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-def _build_request(message: str, session_id: str) -> AgentRequest:
+def _build_request(message: str, session_id: str, user_id: int) -> AgentRequest:
     settings = current_app.config["NUTRIMIND_SETTINGS"]
     history = [{"role": m.role, "content": m.content}
-               for m in ChatMessage.recent(session_id, limit=_HISTORY_TURNS)
+               for m in ChatMessage.recent(session_id, user_id,
+                                           limit=_HISTORY_TURNS)
                if m.role in ("user", "assistant")]
+    # Resolved here, before any agent runs, so the ownership filter applied to
+    # retrieval comes from the database rather than from anything the agent or
+    # the model can influence.
+    document_ids = get_rag_service(settings).document_ids_for(user_id)
     return AgentRequest(
         message=message,
         # Factory, not an instance: the vector store is opened only if this turn
         # actually retrieves, so a Chroma failure cannot break the routing-only
         # and deterministic paths (small talk, BMI).
-        toolbox=Toolbox(lambda: get_rag_service(settings)),
+        toolbox=Toolbox(lambda: get_rag_service(settings), user_id,
+                        document_ids=document_ids),
         llm=get_llm_client(settings),
-        profile=UserProfile.get_singleton(),
+        profile=UserProfile.for_user(user_id),
         history=history,
     )
 
 
-def _persist_turn(session_id: str, message: str, final_event: dict) -> int:
+def _persist_turn(session_id: str, message: str, final_event: dict,
+                  user_id: int) -> int:
     """Store the user + assistant messages; returns the assistant row id."""
     meta = final_event["meta"]
     db.session.add(ChatMessage(session_id=session_id, role="user",
-                               content=message))
+                               content=message, user_id=user_id))
     assistant = ChatMessage(
-        session_id=session_id, role="assistant",
+        user_id=user_id, session_id=session_id, role="assistant",
         content=final_event["text"],
         agent=meta["agent"], rag_used=meta["grounded"],
         sources=meta["citations"], tokens_used=meta["tokens"]["total"] or 0)
@@ -94,7 +108,8 @@ def chat():
     session_id = str(data.get("session_id") or uuid.uuid4())[:36]
     stream = bool(data.get("stream", True))
 
-    agent_request = _build_request(message, session_id)
+    user_id = current_user_id()
+    agent_request = _build_request(message, session_id, user_id)
     coordinator = get_coordinator()
 
     if not stream:
@@ -102,7 +117,7 @@ def chat():
         for event in coordinator.handle(agent_request):
             if event["type"] == "final":
                 final = event
-        message_id = _persist_turn(session_id, message, final)
+        message_id = _persist_turn(session_id, message, final, user_id)
         return ok({"reply": final["text"], "session_id": session_id,
                    "message_id": message_id, "meta": final["meta"]})
 
@@ -114,7 +129,7 @@ def chat():
                 kind = event.pop("type")
                 if kind == "final":
                     message_id = _persist_turn(session_id, message, {
-                        "type": "final", **event})
+                        "type": "final", **event}, user_id)
                     yield _sse("final", {"message_id": message_id,
                                          "session_id": session_id,
                                          "text": event["text"],
@@ -142,8 +157,9 @@ def chat():
 @chat_api.get("/chat/sessions")
 def chat_sessions():
     """Recent conversation sessions with a preview (dashboard + history)."""
-    rows = db.session.execute(db.select(ChatMessage).order_by(
-        ChatMessage.created_at.desc()).limit(300)).scalars()
+    rows = db.session.execute(
+        db.select(ChatMessage).where(ChatMessage.user_id == current_user_id())
+        .order_by(ChatMessage.created_at.desc()).limit(300)).scalars()
     sessions: dict[str, dict] = {}
     for message in rows:
         entry = sessions.setdefault(message.session_id, {
@@ -163,5 +179,6 @@ def chat_history():
     limit = min(int(request.args.get("limit", 50)), 200)
     if limit < 1:
         raise ValidationError("'limit' must be positive.")
-    return ok({"messages": [m.to_dict()
-                            for m in ChatMessage.recent(session_id, limit=limit)]})
+    return ok({"messages": [
+        m.to_dict()
+        for m in ChatMessage.recent(session_id, current_user_id(), limit=limit)]})

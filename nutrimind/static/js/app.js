@@ -65,26 +65,70 @@ window.NM = (function () {
   }
 
   /* ---------------- fetch with the API error envelope ---------------------- */
-  async function api(path, options = {}) {
+  /* CSRF token, rendered into <meta> by base.html. Flask-WTF checks the
+     X-CSRFToken header on every state-changing request; the JSON API no longer
+     carries a blanket exemption now that a session cookie exists for a
+     cross-site request to ride. */
+  function csrfToken() {
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    return meta ? meta.getAttribute("content") : "";
+  }
+
+  /* The ONLY place this app calls fetch().
+
+     Every request goes through here so the CSRF header and the signed-out
+     redirect are applied in one place. Callers that need the raw Response —
+     file uploads, the SSE chat stream — use this directly; `api()` layers JSON
+     parsing on top. A bare fetch() elsewhere silently omits the token, which is
+     how document upload broke: it failed with an HTML 400 that the caller then
+     tried to parse as JSON. tests/unit/test_frontend_contract.py fails the build
+     if a bare fetch() reappears. */
+  async function nmFetch(path, options = {}) {
     if (options.json !== undefined) {
       options.body = JSON.stringify(options.json);
       options.headers = Object.assign({ "Content-Type": "application/json" },
                                       options.headers);
       delete options.json;
     }
+    const method = (options.method || "GET").toUpperCase();
+    if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
+      options.headers = Object.assign({ "X-CSRFToken": csrfToken() },
+                                      options.headers);
+    }
     const response = await fetch(path, options);
+    /* A signed-out session must not look like a broken page. Reload so the
+       server can redirect to the sign-in screen with a real explanation. */
+    if (response.status === 401) {
+      window.location.href = "/login?next=" +
+        encodeURIComponent(window.location.pathname);
+      throw new Error("Your session has expired. Please sign in again.");
+    }
+    return response;
+  }
+
+  /* Extract a human message from a failed response without ever throwing.
+
+     Not every error body is JSON: a proxy timeout, a size limit hit before the
+     app sees the request, or any unhandled framework error returns HTML. Calling
+     response.json() on those throws "unexpected character at line 1 column 1",
+     which replaces a useful message with a confusing one. */
+  async function readError(response) {
     let body = null;
-    try { body = await response.json(); } catch (_) { /* non-JSON */ }
+    try { body = await response.json(); } catch (_) { /* HTML or empty body */ }
+    const err = (body && body.error) || {};
+    if (err.message) return err.hint ? `${err.message} ${err.hint}` : err.message;
+    return `Request failed (${response.status}${
+      response.statusText ? " " + response.statusText : ""})`;
+  }
+
+  async function api(path, options = {}) {
+    const response = await nmFetch(path, options);
     if (!response.ok) {
-      const err = (body && body.error) || {};
-      const message = err.hint ? `${err.message} ${err.hint}` :
-        (err.message || `Request failed (${response.status})`);
-      const error = new Error(message);
+      const error = new Error(await readError(response));
       error.status = response.status;
-      error.code = err.code;
       throw error;
     }
-    return body;
+    try { return await response.json(); } catch (_) { return null; }
   }
 
   /* ---------------- markdown (sanitized) ----------------------------------- */
@@ -149,5 +193,5 @@ window.NM = (function () {
     });
   });
 
-  return { toast, confirmDialog, api, md, timeAgo, esc };
+  return { toast, confirmDialog, api, fetch: nmFetch, readError, md, timeAgo, esc };
 })();

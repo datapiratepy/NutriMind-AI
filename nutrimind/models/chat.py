@@ -26,6 +26,8 @@ class ChatMessage(db.Model):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        db.ForeignKey("users.id", ondelete="CASCADE"), index=True)
     session_id: Mapped[str] = mapped_column(db.String(36), index=True)
     role: Mapped[str] = mapped_column(db.String(10))
     agent: Mapped[Optional[str]] = mapped_column(db.String(40))
@@ -36,10 +38,17 @@ class ChatMessage(db.Model):
     created_at: Mapped[dt.datetime] = mapped_column(default=utcnow, index=True)
 
     @classmethod
-    def recent(cls, session_id: str, limit: int = 20) -> list["ChatMessage"]:
-        """Last ``limit`` messages of a session in chronological order."""
+    def recent(cls, session_id: str, user_id: int,
+               limit: int = 20) -> list["ChatMessage"]:
+        """Last ``limit`` messages of one user's session, oldest first.
+
+        ``user_id`` is required, not optional: session ids are client-supplied,
+        so filtering on the session alone would let anyone read another
+        account's conversation by guessing or reusing its id.
+        """
         rows = list(db.session.execute(
-            db.select(cls).where(cls.session_id == session_id)
+            db.select(cls).where(cls.session_id == session_id,
+                                 cls.user_id == user_id)
             .order_by(cls.created_at.desc(), cls.id.desc()).limit(limit)
         ).scalars())
         return list(reversed(rows))

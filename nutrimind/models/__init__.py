@@ -9,6 +9,7 @@ from nutrimind.models.documents import Document
 from nutrimind.models.meals import MealLog, MealPlan
 from nutrimind.models.profile import UserProfile
 from nutrimind.models.tracking import BMIRecord, WaterLog
+from nutrimind.models.user import User
 
 __all__ = [
     "BMIRecord",
@@ -16,6 +17,7 @@ __all__ = [
     "Document",
     "MealLog",
     "MealPlan",
+    "User",
     "UserProfile",
     "WaterLog",
 ]

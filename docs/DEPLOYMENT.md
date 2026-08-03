@@ -44,16 +44,85 @@ Terminate TLS in front of the WSGI server — nginx or Caddy:
 
 Never expose the WSGI port directly; bind it to localhost.
 
+## Authentication and sessions
+
+Every route that touches user data requires a signed-in account. Sessions are
+signed cookies, so `FLASK_SECRET_KEY` is what protects them: set it explicitly
+in production (see above). Changing it signs everyone out, which is the
+emergency lever if a session is ever suspected of being stolen.
+
+Cookie flags are set automatically: `HttpOnly` always, `SameSite=Lax` always,
+and `Secure` whenever `FLASK_DEBUG` is off — so production sessions are only
+ever sent over HTTPS. Terminate TLS in front of the app (see above) or browsers
+will refuse to send the cookie at all.
+
+`SESSION_DAYS` (default 14) sets how long a session lasts.
+
+### Behind a reverse proxy: set `TRUSTED_PROXY_HOPS`
+
+```
+TRUSTED_PROXY_HOPS=1     # one proxy (nginx/Caddy) in front of the app
+```
+
+Without it, `request.remote_addr` is the *proxy's* address, so every visitor
+shares one identity and the login rate limiter counts them together — ten failed
+attempts by anybody locks out the whole site.
+
+Set it to the number of proxies that actually sit in front of the app, and no
+more. Trusting more hops than exist lets a client send its own
+`X-Forwarded-For` and be treated as any address it likes.
+
+### Account management
+
+```bash
+python scripts/manage_users.py list
+python scripts/manage_users.py create you@example.com
+python scripts/manage_users.py set-password you@example.com
+python scripts/manage_users.py disable someone@example.com
+```
+
+Passwords are prompted for, never passed as arguments — command lines end up in
+shell history and in the process list.
+
+### Password reset needs a mail transport
+
+**Not yet configured.** `POST /forgot-password` generates a signed, expiring,
+single-use link and writes it to the application log rather than emailing it.
+That is workable for a single-operator deployment and useless for a public one:
+users cannot read your logs.
+
+Wiring SMTP is a prerequisite for public launch. The seam is
+`_deliver_reset_link()` in `nutrimind/routes/auth.py`.
+
+## Changing embedding provider
+
+Each provider owns its own Chroma collection (`kb_watsonx`, `kb_local`,
+`kb_lexical`) because their vector spaces are not comparable — mixing them
+returns confident nonsense.
+
+So **adding IBM credentials, or installing `sentence-transformers`, switches
+collections**, and documents indexed under the previous provider stop being
+searchable. They are not lost: the knowledge page marks them **needs re-index**
+with the reason, and the re-index button rebuilds them into the active
+collection. Nothing changes until you do it.
+
+Similarity thresholds move with the provider too. Each supplies the value
+calibrated for its own space (semantic ≈ 0.35, lexical ≈ 0.12). Leave
+`RAG_SIMILARITY_THRESHOLD` unset unless you have measured a better number for
+your own corpus — one value applied across providers silently breaks whichever
+it was not chosen for.
+
 ## Security recommendations
 
 - Secrets stay in `.env` / the platform's secret store — never in the image
   or repo. Rotate the IBM key if it ever leaks.
-- Add authentication before any multi-user or public deployment (the app is
-  single-profile by design); enable CSRF tokens on forms at the same time.
 - Keep `MAX_UPLOAD_MB` conservative; uploads are validated but disk is
   finite.
-- The in-memory rate limiter is per-process — put real limits at the proxy
+- The in-memory rate limiter is per-process, so with several workers the
+  effective limit is `workers × max_calls`. Put real limits at the proxy
   (nginx `limit_req`) for public exposure.
+- Security headers (CSP, HSTS) and Subresource Integrity on the CDN assets are
+  still outstanding — tracked as the security-hardening milestone.
 
 ## Database migrations
 
@@ -100,6 +169,29 @@ revision is caught before it reaches a deployment.
 Rollback is `flask db downgrade`. Note that downgrades which drop columns
 destroy the data in them — for anything beyond a trivial revert, restoring
 from backup is the safer path.
+
+### Upgrading a database that predates accounts
+
+The tenancy migration adds an owner to every row. Data that already existed has
+no owner, so it is adopted into a placeholder account
+(`legacy@nutrimind.invalid`) that has no usable password and cannot be signed
+into. **Nothing is deleted**, but the data is unreachable until you claim it:
+
+```bash
+python scripts/manage_users.py set-password legacy@nutrimind.invalid
+```
+
+Then sign in as that address. Rename it afterwards if you prefer a real one.
+
+**On an empty database no placeholder is created** — a fresh install should not
+inherit a ghost account. The upgrade prints an `adopted N existing row(s)…`
+line only when it actually adopted something; if you did not see one, there was
+nothing to adopt and `legacy@nutrimind.invalid` will not exist. Confirm with
+`python scripts/manage_users.py list` and register normally.
+
+If the upgrade stops with *"Found N rows in user_profile"*, the database holds
+several profiles from before a profile belonged to one account. Keep the row you
+want, delete the rest, and re-run.
 
 ## SQLite limitations & PostgreSQL path
 

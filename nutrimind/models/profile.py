@@ -27,6 +27,10 @@ class UserProfile(db.Model):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    # unique: a user has exactly one profile, enforced by the database rather
+    # than by convention as the old singleton lookup did.
+    user_id: Mapped[int] = mapped_column(
+        db.ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True)
     name: Mapped[str] = mapped_column(db.String(80))
     age: Mapped[int]
     gender: Mapped[str] = mapped_column(db.String(10))
@@ -44,9 +48,16 @@ class UserProfile(db.Model):
                                                     onupdate=utcnow)
 
     @classmethod
-    def get_singleton(cls) -> "UserProfile | None":
-        """Return the one profile row, or None before onboarding."""
-        return db.session.execute(db.select(cls).limit(1)).scalar_one_or_none()
+    def for_user(cls, user_id: int) -> "UserProfile | None":
+        """This user's profile, or None before onboarding.
+
+        Replaces the former ``get_singleton()``, which returned whichever row
+        happened to be first and therefore handed every visitor the same
+        profile once more than one existed.
+        """
+        return db.session.execute(
+            db.select(cls).where(cls.user_id == user_id)
+        ).scalar_one_or_none()
 
     def summary_for_prompt(self) -> str:
         """Compact one-line description injected into agent prompts."""

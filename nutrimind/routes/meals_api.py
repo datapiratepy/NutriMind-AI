@@ -17,11 +17,12 @@ agent's job; it calls the same estimator with the items it extracts.
 from __future__ import annotations
 
 from flask import Blueprint, request
+from flask_login import login_required
 
 from nutrimind.exceptions import ValidationError
 from nutrimind.extensions import db
 from nutrimind.models import MealLog, MealPlan
-from nutrimind.routes import ok
+from nutrimind.routes import current_user_id, ok
 from nutrimind.services.nutrition_service import get_food_table
 from nutrimind.utils.validators import (
     sanitize_text,
@@ -31,6 +32,16 @@ from nutrimind.utils.validators import (
 )
 
 meals_api = Blueprint("meals_api", __name__, url_prefix="/api")
+
+
+@meals_api.before_request
+@login_required
+def _require_login():
+    """Default-deny: every endpoint in this blueprint needs a session.
+
+    Applied at the blueprint rather than per route so that adding an
+    endpoint cannot accidentally expose one account's data to another.
+    """
 
 
 def _estimate_from_request() -> tuple[dict, list[dict]]:
@@ -51,6 +62,7 @@ def log_meal():
     data = request.get_json(silent=True) or {}
     totals = estimate["totals"]
     log = MealLog(
+        user_id=current_user_id(),
         meal_type=validate_meal_type(data.get("meal_type")),
         raw_text=(sanitize_text(data["raw_text"], max_chars=2000, field="raw_text")
                   if data.get("raw_text") else None),
@@ -69,13 +81,17 @@ def log_meal():
 @meals_api.get("/meals")
 def list_meals():
     days = int(validate_range(request.args.get("days", 7), "days", 1, 90))
-    return ok({"meals": [m.to_dict() for m in MealLog.since(days)]})
+    return ok({"meals": [m.to_dict()
+                         for m in MealLog.since(days, current_user_id())]})
 
 
 @meals_api.delete("/meals/<int:meal_id>")
 def delete_meal(meal_id: int):
     log = db.session.get(MealLog, meal_id)
-    if log is None:
+    # Same 'does not exist' response for another user's row as for a missing
+    # one: a distinct 403 would confirm the id is real and let anyone map out
+    # which records exist by probing.
+    if log is None or log.user_id != current_user_id():
         raise ValidationError(f"Meal log {meal_id} does not exist.")
     db.session.delete(log)
     db.session.commit()
@@ -96,7 +112,8 @@ def search_foods():
 @meals_api.get("/meal-plans")
 def list_meal_plans():
     rows = db.session.execute(
-        db.select(MealPlan).order_by(MealPlan.created_at.desc()).limit(50)
+        db.select(MealPlan).where(MealPlan.user_id == current_user_id())
+        .order_by(MealPlan.created_at.desc()).limit(50)
     ).scalars()
     return ok({"plans": [p.to_dict(include_plan=False) for p in rows]})
 
@@ -105,7 +122,7 @@ def list_meal_plans():
 def get_meal_plan(plan_id: int):
     """Full detail of one saved plan (used by the planner page)."""
     plan = db.session.get(MealPlan, plan_id)
-    if plan is None:
+    if plan is None or plan.user_id != current_user_id():
         raise ValidationError(f"Meal plan {plan_id} does not exist.")
     return ok({"plan": plan.to_dict()})
 
@@ -119,9 +136,9 @@ def export_meal_plan(plan_id: int):
     from nutrimind.services.export_service import build_meal_plan_pdf
 
     plan = db.session.get(MealPlan, plan_id)
-    if plan is None:
+    if plan is None or plan.user_id != current_user_id():
         raise ValidationError(f"Meal plan {plan_id} does not exist.")
-    pdf_bytes = build_meal_plan_pdf(plan, UserProfile.get_singleton())
+    pdf_bytes = build_meal_plan_pdf(plan, UserProfile.for_user(current_user_id()))
     filename = f"nutrimind-plan-{plan_id}.pdf"
     return Response(pdf_bytes, mimetype="application/pdf", headers={
         "Content-Disposition": f'attachment; filename="{filename}"'})
@@ -130,7 +147,7 @@ def export_meal_plan(plan_id: int):
 @meals_api.delete("/meal-plans/<int:plan_id>")
 def delete_meal_plan(plan_id: int):
     plan = db.session.get(MealPlan, plan_id)
-    if plan is None:
+    if plan is None or plan.user_id != current_user_id():
         raise ValidationError(f"Meal plan {plan_id} does not exist.")
     db.session.delete(plan)
     db.session.commit()

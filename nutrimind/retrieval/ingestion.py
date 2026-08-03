@@ -86,6 +86,7 @@ def ingest_pdf(
     stored_name: str,
     settings: Settings,
     vector_store: VectorStore,
+    user_id: int,
     condition_tags: list[str] | None = None,
 ) -> Document:
     """Run the full pipeline for one PDF; returns the Document row.
@@ -98,8 +99,12 @@ def ingest_pdf(
     :raises DocumentProcessingError: extraction/embedding/indexing failures.
     """
     digest = sha256_of(path)
+    # Scoped to the uploader: the same public guideline PDF being uploaded by
+    # two people is normal, and a global check would tell the second one their
+    # file is 'already indexed' while showing them nothing they can open.
     existing = db.session.execute(
         db.select(Document).where(Document.sha256 == digest,
+                                  Document.user_id == user_id,
                                   Document.status == "indexed")
     ).scalar_one_or_none()
     if existing:
@@ -109,7 +114,7 @@ def ingest_pdf(
         )
 
     document = Document(filename=original_filename, stored_name=stored_name,
-                        sha256=digest, status="processing",
+                        sha256=digest, status="processing", user_id=user_id,
                         condition_tags=condition_tags or [])
     db.session.add(document)
     db.session.commit()  # ID needed for chunk metadata; status visible to UI

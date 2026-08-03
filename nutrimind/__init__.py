@@ -7,17 +7,21 @@ The app boots fully in demo mode with zero IBM credentials.
 
 from __future__ import annotations
 
+import datetime as dt
 import logging
 from pathlib import Path
 
-from flask import Flask, g, jsonify, render_template, request
+from flask import Flask, g, jsonify, redirect, render_template, request, url_for
+from flask_wtf.csrf import CSRFError
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 from werkzeug.exceptions import HTTPException
 
 from nutrimind.config import Settings, load_settings, resolve_app_mode, validate_settings
 from nutrimind.exceptions import ConfigurationError, NutriMindError
-from nutrimind.extensions import csrf, db, migrate
-from nutrimind.utils.decorators import init_request_middleware
+from nutrimind.extensions import csrf, db, login_manager, migrate
+from nutrimind.utils.decorators import configure_proxy_awareness, init_request_middleware
 from nutrimind.utils.logging_config import configure_logging
 
 __version__ = "1.0.0"
@@ -51,10 +55,23 @@ def create_app(settings: Settings | None = None) -> Flask:
         MAX_CONTENT_LENGTH=settings.max_upload_mb * 1024 * 1024,
         JSON_SORT_KEYS=False,
         NUTRIMIND_SETTINGS=settings,
+        # -- session cookie hardening ------------------------------------
+        # Not readable from JavaScript, so an XSS bug cannot exfiltrate the
+        # session itself.
+        SESSION_COOKIE_HTTPONLY=True,
+        # Not sent on cross-site POSTs. A second line of defence behind CSRF
+        # tokens, and the one that still works if a token check is ever missed.
+        SESSION_COOKIE_SAMESITE="Lax",
+        # HTTPS-only in production. Tied to debug rather than hard-coded so
+        # local development over http still works; production runs debug off.
+        SESSION_COOKIE_SECURE=not settings.debug,
+        PERMANENT_SESSION_LIFETIME=dt.timedelta(days=settings.session_days),
+        WTF_CSRF_TIME_LIMIT=None,  # tokens live as long as the session
     )
 
     db.init_app(app)
-    csrf.init_app(app)  # JSON API blueprints are exempted during registration
+    csrf.init_app(app)
+    _configure_login(app)
 
     # Importing the models package registers every table on ``db.metadata``,
     # which is what Alembic autogenerate compares against.
@@ -69,6 +86,7 @@ def create_app(settings: Settings | None = None) -> Flask:
     # several workers must not race each other to migrate.
     migrate.init_app(app, db)
 
+    configure_proxy_awareness(app, settings.trusted_proxy_hops)
     init_request_middleware(app)
     _register_blueprints(app)
     _register_error_handlers(app)
@@ -81,6 +99,52 @@ def create_app(settings: Settings | None = None) -> Flask:
 #: Absolute location of the Alembic scripts, resolved from the package rather
 #: than the caller's working directory.
 MIGRATIONS_DIR = Path(__file__).resolve().parent.parent / "migrations"
+
+
+@event.listens_for(Engine, "connect")
+def _enforce_sqlite_foreign_keys(dbapi_connection, _record) -> None:
+    """Turn on foreign-key enforcement for SQLite connections.
+
+    SQLite parses ``REFERENCES`` but ignores it unless this pragma is set per
+    connection — so ownership constraints that PostgreSQL enforces would be
+    decorative in development, and a bug that orphans rows would pass locally
+    and fail in production. Guarded by class name rather than dialect because
+    the listener is on the generic Engine and also sees PostgreSQL connections.
+    """
+    if type(dbapi_connection).__module__.startswith("sqlite3"):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+
+def _configure_login(app: Flask) -> None:
+    """Wire session authentication and decide what unauthenticated users get."""
+    login_manager.init_app(app)
+    login_manager.login_view = "auth.login"
+    login_manager.login_message = "Please sign in to continue."
+    login_manager.session_protection = "strong"
+
+    @login_manager.user_loader
+    def _load_user(session_id: str):
+        from nutrimind.models import User
+
+        return User.from_session_id(session_id)
+
+    @login_manager.unauthorized_handler
+    def _unauthorized():
+        """JSON for the API, a redirect for pages.
+
+        The API must not answer with an HTML login page: the frontend would try
+        to parse it as JSON and report a confusing error instead of "you are
+        signed out".
+        """
+        if request.path.startswith("/api/"):
+            return jsonify(error={
+                "code": "authentication_required",
+                "message": "Please sign in to continue.",
+                "request_id": getattr(g, "request_id", "-"),
+            }), 401
+        return redirect(url_for("auth.login", next=request.full_path))
 
 
 def _baseline_revision() -> str:
@@ -193,6 +257,28 @@ def _register_error_handlers(app: Flask) -> None:
                                "A database error occurred. Please try again.")
         return render_template("errors/500.html",
                                message="A database error occurred."), 500
+
+    @app.errorhandler(CSRFError)
+    def _handle_csrf_error(exc: CSRFError):
+        """Keep the JSON contract when a CSRF check fails.
+
+        Flask-WTF raises CSRFError, a plain HTTPException, so without this it
+        escapes as Werkzeug's stock HTML 400 page. Under ``/api/`` that breaks
+        the documented envelope: the browser client parses every API response as
+        JSON and reports "unexpected character at line 1 column 1" — column 1
+        being the ``<`` of ``<!doctype html>``. The real cause is then invisible.
+        """
+        logger.warning("CSRF rejected: %s %s — %s",
+                       request.method, request.path, exc.description)
+        if _wants_json():
+            return _json_error(
+                400, "csrf_error",
+                "Your session token was missing or expired.",
+                hint="Reload the page and try again.")
+        return render_template(
+            "errors/500.html",
+            message="Your session token was missing or expired. "
+                    "Please reload the page and try again."), 400
 
     @app.errorhandler(404)
     def _handle_not_found(_exc):

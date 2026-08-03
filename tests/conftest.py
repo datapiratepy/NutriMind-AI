@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
+from flask.testing import FlaskClient
 
 from nutrimind import create_app
 from nutrimind.config import load_settings
@@ -58,6 +61,21 @@ def _release_chroma_clients() -> None:
             continue
 
 
+@pytest.fixture(autouse=True)
+def _reset_rate_limits():
+    """Clear the process-global rate-limit state between tests.
+
+    Without this the ~180 sign-ins the suite performs all count against one
+    bucket for 127.0.0.1, trip the login limiter partway through, and every
+    later test fails in setup with a confusing authentication error.
+    """
+    from nutrimind.utils.decorators import reset_rate_limits
+
+    reset_rate_limits()
+    yield
+    reset_rate_limits()
+
+
 @pytest.fixture()
 def app(monkeypatch, tmp_path):
     """A fresh app per test: demo mode, isolated on-disk SQLite in tmp_path."""
@@ -78,6 +96,7 @@ def app(monkeypatch, tmp_path):
     llm_module._client = None
 
     application = create_app(load_settings(ensure_dirs=True))
+    application.test_client_class = CSRFClient
 
     # create_app no longer builds the schema — the migration scripts own it.
     # Tests use create_all() rather than running the migration chain per test,
@@ -96,9 +115,109 @@ def app(monkeypatch, tmp_path):
     _release_chroma_clients()
 
 
+_CSRF_META = re.compile(r'name="csrf-token" content="([^"]+)"')
+
+
+class CSRFClient(FlaskClient):
+    """Test client that supplies CSRF tokens the way the browser does.
+
+    The usual shortcut is ``WTF_CSRF_ENABLED = False`` in test config, which
+    quietly turns every CSRF assertion in the suite into a no-op — the protection
+    could be removed entirely and nothing would fail. Sending the real token
+    instead keeps those tests meaningful, and means a route that forgets to
+    accept the header shows up here rather than in a browser.
+
+    The token comes from ``/about``: public, always rendered from base.html, and
+    reachable whether or not the client is signed in.
+    """
+
+    _UNSAFE = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+    def csrf_token(self) -> str:
+        match = _CSRF_META.search(super().get("/about").get_data(as_text=True))
+        assert match, "no CSRF token in /about — base.html meta tag missing?"
+        return match.group(1)
+
+    def open(self, *args, **kwargs):  # noqa: A003 — Werkzeug's API name
+        method = (kwargs.get("method") or "GET").upper()
+        if method in self._UNSAFE and not kwargs.pop("no_csrf", False):
+            headers = dict(kwargs.get("headers") or {})
+            headers.setdefault("X-CSRFToken", self.csrf_token())
+            kwargs["headers"] = headers
+        return super().open(*args, **kwargs)
+
+
+def make_user(email: str = "user-a@example.test", password: str = "correct-horse-battery",
+              name: str = "Test User"):
+    """Create an account directly, bypassing the registration route.
+
+    Tests that exercise data ownership should not have to drive a signup form to
+    get there; the flows themselves are covered in tests/integration/test_auth.py.
+    """
+    from nutrimind.models import User
+
+    user = User(email=User.normalize_email(email), display_name=name)
+    user.set_password(password)
+    _db.session.add(user)
+    _db.session.commit()
+    return user
+
+
 @pytest.fixture()
-def client(app):
+def user(app):
+    """The default account. Its id is stable within a test."""
+    with app.app_context():
+        created = make_user()
+        return {"id": created.id, "email": created.email,
+                "password": "correct-horse-battery"}
+
+
+@pytest.fixture()
+def other_user(app):
+    """A second account, for proving one user cannot reach another's data."""
+    with app.app_context():
+        created = make_user(email="user-b@example.test", name="Other User")
+        return {"id": created.id, "email": created.email,
+                "password": "correct-horse-battery"}
+
+
+def sign_in(test_client, account: dict) -> None:
+    """Log a test client in through the real login route.
+
+    Deliberately not Flask-Login's session-injection helper: going through the
+    actual form means these tests would notice if authentication itself broke,
+    and it gives the client a real session cookie and CSRF token.
+    """
+    response = test_client.post("/login", data={
+        "email": account["email"], "password": account["password"]})
+    assert response.status_code in (302, 200), "sign-in failed in test setup"
+
+
+@pytest.fixture()
+def anon_client(app):
+    """A client with no session — for testing that endpoints reject strangers."""
     return app.test_client()
+
+
+@pytest.fixture()
+def client(app, user):
+    """Signed-in client used by most tests.
+
+    CSRF stays **enabled** here. Disabling it in tests is the common shortcut and
+    it silently voids every CSRF assertion in the suite; instead the test client
+    sends the token, exactly as the browser does.
+    """
+    test_client = app.test_client()
+    sign_in(test_client, user)
+    return test_client
+
+
+@pytest.fixture()
+def client_b(app, other_user):
+    """Signed-in client for the second account."""
+    test_client = app.test_client()
+    sign_in(test_client, other_user)
+    return test_client
 
 
 @pytest.fixture()

@@ -9,6 +9,7 @@ matches are evidence.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from nutrimind.retrieval.vector_store import RetrievedChunk, VectorStore
@@ -24,6 +25,10 @@ class RetrievalResult:
     chunks: list[RetrievedChunk] = field(default_factory=list)
     grounded: bool = False
     provider: str = ""
+    #: False when the active provider matches words rather than meaning. The
+    #: UI needs this to explain an empty result honestly instead of blaming
+    #: the threshold, which is what it used to do.
+    semantic: bool = True
     threshold: float = 0.0
 
     def citations(self) -> list[dict]:
@@ -49,7 +54,8 @@ class RetrievalResult:
             "query": self.query,
             "grounded": self.grounded,
             "provider": self.provider,
-            "threshold": self.threshold,
+            "semantic": self.semantic,
+            "threshold": round(self.threshold, 4),
             "chunks": [c.to_dict() for c in self.chunks],
             "citations": self.citations(),
         }
@@ -64,12 +70,28 @@ class Retriever:
         self._top_k = top_k
         self._threshold = similarity_threshold
 
-    def retrieve(self, query: str, *, top_k: int | None = None) -> RetrievalResult:
-        """Search and apply the grounding threshold."""
+    def retrieve(self, query: str, *, top_k: int | None = None,
+                 document_ids: Sequence[int] | None = None) -> RetrievalResult:
+        """Search and apply the grounding threshold.
+
+        :param document_ids: documents the caller is allowed to see; see
+            :meth:`VectorStore.query`. Passed straight through so that the
+            ownership filter is applied by the store rather than by discarding
+            forbidden hits afterwards — filtering after the fact would silently
+            shrink top-k and could return nothing while relevant owned passages
+            existed just outside the window.
+        """
         limit = top_k or self._top_k
-        embedding = self._store.provider.embed_query(query)
-        hits = self._store.query(embedding, top_k=limit)
-        kept = [h for h in hits if h.similarity >= self._threshold]
+        provider = self._store.provider
+        embedding = provider.embed_query(query)
+        hits = self._store.query(embedding, top_k=limit, document_ids=document_ids)
+        # Two gates, not one. The threshold asks "is this close enough in the
+        # vector space"; provider.matches() asks "does the space's answer survive
+        # contact with the actual text". For semantic providers the second is a
+        # no-op; for the approximate lexical space it removes hash collisions
+        # that would otherwise be presented as cited evidence.
+        kept = [h for h in hits
+                if h.similarity >= self._threshold and provider.matches(query, h.text)]
         logger.info("retrieve %r: %d hits, %d above threshold %.2f (best %.3f)",
                     query[:60], len(hits), len(kept), self._threshold,
                     hits[0].similarity if hits else 0.0)
@@ -77,6 +99,7 @@ class Retriever:
             query=query,
             chunks=kept,
             grounded=bool(kept),
-            provider=self._store.provider.name,
+            provider=provider.name,
+            semantic=provider.semantic,
             threshold=self._threshold,
         )

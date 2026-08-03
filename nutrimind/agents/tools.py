@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 from nutrimind.retrieval.retriever import RetrievalResult
@@ -42,11 +42,19 @@ class ToolCall:
 class Toolbox:
     """Request-scoped tool facade; records every invocation."""
 
-    def __init__(self, rag_factory: Callable[[], RAGService]) -> None:
-        """:param rag_factory: called at most once, on the first retrieval."""
+    def __init__(self, rag_factory: Callable[[], RAGService], user_id: int,
+                 document_ids: Sequence[int] | None = None) -> None:
+        """:param rag_factory: called at most once, on the first retrieval.
+        :param user_id: owner of everything this turn reads or writes.
+        :param document_ids: documents this user may retrieve from. Resolved
+            once per request rather than per retrieval, so a turn sees a
+            consistent set even if an upload finishes midway through it.
+        """
         self._rag_factory = rag_factory
         self._rag: RAGService | None = None
         self._rag_failed = False
+        self.user_id = user_id
+        self.document_ids = list(document_ids or [])
         self.calls: list[ToolCall] = []
 
     def _record(self, tool: str, summary: str) -> None:
@@ -82,7 +90,8 @@ class Toolbox:
         try:
             if self._rag is None:
                 self._rag = self._rag_factory()
-            result = self._rag.retrieve(query, top_k=top_k)
+            result = self._rag.retrieve(query, top_k=top_k,
+                                        document_ids=self.document_ids)
         except Exception as exc:  # noqa: BLE001 — degrade, never fail the turn
             self._rag_failed = True
             logger.warning("retrieval unavailable (%s: %s) — answering ungrounded",
@@ -90,7 +99,8 @@ class Toolbox:
             self._record("retrieve_knowledge",
                          f"unavailable ({type(exc).__name__}) — answered without grounding")
             return RetrievalResult(query=query, chunks=[], grounded=False,
-                                   provider="unavailable", threshold=0.0)
+                                   provider="unavailable", semantic=False,
+                                   threshold=0.0)
         self._record("retrieve_knowledge",
                      f"{len(result.chunks)} passages above threshold "
                      f"{result.threshold} (provider={result.provider})")
@@ -127,7 +137,8 @@ class Toolbox:
         from nutrimind.models import MealLog
 
         totals = estimate["totals"]
-        log = MealLog(meal_type=meal_type, raw_text=raw_text[:2000],
+        log = MealLog(user_id=self.user_id,
+                      meal_type=meal_type, raw_text=raw_text[:2000],
                       items=estimate["items"], calories=totals["calories"],
                       protein_g=totals["protein_g"], fat_g=totals["fat_g"],
                       carbs_g=totals["carbs_g"], fiber_g=totals["fiber_g"],

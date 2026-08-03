@@ -91,7 +91,8 @@ All five agents work with zero credentials: routing uses rules+default;
 the planner receives a valid canned plan JSON (marker-matched by the demo
 backend); the analyzer switches to the deterministic alias scanner
 (`naive_extract_items`) — which also serves as the live-mode fallback when
-Granite extraction fails; knowledge/advisor answer from scripted content,
+Granite extraction fails; knowledge/advisor answer **from the retrieved
+passages themselves** when a turn is grounded, and from scripted content
 correctly labeled as general knowledge. Every demo answer is marked.
 
 ## 8. Token budget summary

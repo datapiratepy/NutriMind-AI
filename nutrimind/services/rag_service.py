@@ -8,8 +8,10 @@ bound to the resolved embedding provider and its collection.
 from __future__ import annotations
 
 import logging
+import shutil
 import threading
 import uuid
+from collections.abc import Sequence
 from pathlib import Path
 
 from werkzeug.datastructures import FileStorage
@@ -41,15 +43,21 @@ class RAGService:
         self._settings = settings
         self.provider = resolve_embedding_provider(settings)
         self.store = VectorStore(settings.chroma_dir, self.provider)
+        # An explicit RAG_SIMILARITY_THRESHOLD wins; otherwise the provider
+        # supplies the value calibrated for its own vector space.
+        self.similarity_threshold = (
+            settings.rag.similarity_threshold
+            if settings.rag.similarity_threshold is not None
+            else self.provider.default_similarity_threshold)
         self.retriever = Retriever(
             self.store,
             top_k=settings.rag.top_k,
-            similarity_threshold=settings.rag.similarity_threshold,
+            similarity_threshold=self.similarity_threshold,
         )
 
     # -- ingestion ------------------------------------------------------------
 
-    def ingest_upload(self, file: FileStorage,
+    def ingest_upload(self, file: FileStorage, user_id: int,
                       condition_tags: list[str] | None = None) -> Document:
         """Validate and index an uploaded PDF (stored under instance/uploads)."""
         original = secure_filename(file.filename or "")
@@ -67,23 +75,64 @@ class RAGService:
         try:
             return ingest_pdf(target, original_filename=original,
                               stored_name=stored, settings=self._settings,
-                              vector_store=self.store,
+                              vector_store=self.store, user_id=user_id,
                               condition_tags=condition_tags)
         except ValidationError:
             target.unlink(missing_ok=True)  # duplicate — keep disk clean
             raise
 
-    def ingest_path(self, path: Path,
+    def ingest_path(self, path: Path, user_id: int,
                     condition_tags: list[str] | None = None) -> Document:
-        """Index a PDF already on disk (seed script; path kept in place)."""
-        stored = str(path.relative_to(self._settings.base_dir)).replace("\\", "/")
-        return ingest_pdf(path, original_filename=path.name, stored_name=stored,
-                          settings=self._settings, vector_store=self.store,
-                          condition_tags=condition_tags)
+        """Index a PDF from disk (seed script), giving the owner its own copy.
+
+        The file is copied into ``instance/uploads`` under a fresh name rather
+        than referenced where it lies. Two reasons, both about ownership:
+
+        * ``stored_name`` is globally unique, so recording the same source path
+          for two accounts would fail on an opaque IntegrityError — and two
+          people seeding the same public guideline PDF is ordinary use.
+        * Documents are per-account, so deleting one account's copy must not
+          remove a file another account's row still points at.
+        """
+        name = f"{uuid.uuid4().hex}.pdf"
+        target = self._settings.instance_dir / "uploads" / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(path, target)
+        try:
+            return ingest_pdf(target, original_filename=path.name,
+                              stored_name=f"instance/uploads/{name}",
+                              settings=self._settings, vector_store=self.store,
+                              user_id=user_id, condition_tags=condition_tags)
+        except ValidationError:
+            target.unlink(missing_ok=True)  # duplicate — keep disk clean
+            raise
 
     def reindex(self, document: Document) -> Document:
         return reindex_document(document, settings=self._settings,
                                 vector_store=self.store)
+
+    def document_ids_for(self, user_id: int) -> list[int]:
+        """Ids of the documents a user owns, for the retrieval ownership filter."""
+        return list(db.session.execute(
+            db.select(Document.id).where(Document.user_id == user_id,
+                                         Document.status == "indexed")
+        ).scalars())
+
+    def has_vectors(self, document: Document) -> bool:
+        """Whether this document is searchable in the *live* collection.
+
+        Derived on read rather than stored. Each embedding provider owns its own
+        collection (``kb_<provider>``), so adding IBM credentials or installing
+        sentence-transformers moves the app to a different one and leaves older
+        documents still saying "indexed" while contributing nothing to search —
+        indistinguishable from broken retrieval unless it is surfaced.
+
+        Computed rather than persisted for three reasons: it needs no schema
+        change, it cannot itself go stale, and it keeps a GET request from
+        writing to the database.
+        """
+        return self.store.count_for_document(document.id) > 0
+
 
     def remove(self, document: Document) -> None:
         """Delete vectors, the DB row, and (for uploads) the stored file."""
@@ -96,15 +145,25 @@ class RAGService:
 
     # -- search ---------------------------------------------------------------
 
-    def retrieve(self, query: str, *, top_k: int | None = None) -> RetrievalResult:
-        """Threshold-filtered retrieval with citations (used by Phase-6 agents)."""
-        return self.retriever.retrieve(query, top_k=top_k)
+    def retrieve(self, query: str, *, top_k: int | None = None,
+                 document_ids: Sequence[int] | None = None) -> RetrievalResult:
+        """Threshold-filtered retrieval with citations.
+
+        :param document_ids: the caller's own documents. Required in request
+            handling; ``None`` (unrestricted) exists only for maintenance and
+            tests. See :meth:`VectorStore.query`.
+        """
+        return self.retriever.retrieve(query, top_k=top_k,
+                                       document_ids=document_ids)
 
     # -- diagnostics ----------------------------------------------------------
 
     def status(self) -> dict:
         return {
             "provider": self.provider.name,
+            "semantic": self.provider.semantic,
+            "capability": self.provider.capability,
+            "similarity_threshold": self.similarity_threshold,
             "collection": self.store.collection_name,
             "chunks": self.store.count(),
         }
