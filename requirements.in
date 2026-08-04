@@ -60,7 +60,7 @@ ibm-watsonx-ai>=1.6
 
 # RAG
 chromadb>=0.5
-pypdf>=4.0
+pypdf>=6.14.2
 
 # PDF export
 reportlab>=4.0
