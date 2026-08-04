@@ -1,0 +1,66 @@
+# NutriMind AI — TLS termination and reverse proxy.
+#
+# Caddy rather than nginx for one reason that matters here: certificates are
+# automatic. There is no certbot to install, no renewal cron to forget, and no
+# separate step between "DNS points at this box" and "HTTPS works".
+
+{
+	# Empty is fine — Caddy falls back to the ZeroSSL/Let's Encrypt default
+	# account. Set NUTRIMIND_TLS_EMAIL in .env to receive expiry warnings.
+	email {$NUTRIMIND_TLS_EMAIL}
+}
+
+{$NUTRIMIND_DOMAIN} {
+	encode zstd gzip
+
+	# ---- Server-Sent Events -------------------------------------------------
+	# /api/chat streams tokens. A buffering proxy holds them until the response
+	# ends, so the answer arrives in one burst after a long silence — the UI
+	# still "works", which is why this is easy to ship broken.
+	#
+	# flush_interval -1 disables response buffering entirely for this route.
+	# The app also sends X-Accel-Buffering: no, which nginx honours and Caddy
+	# ignores; this directive is what actually does it here.
+	@sse path /api/chat
+	handle @sse {
+		reverse_proxy app:8000 {
+			flush_interval -1
+			# A stream may legitimately be quiet while the model thinks.
+			transport http {
+				read_timeout 300s
+			}
+		}
+	}
+
+	# ---- Uploads ------------------------------------------------------------
+	# Ingestion is asynchronous (202 immediately), so this only needs to cover
+	# the upload itself, not the indexing behind it. Kept generous because a
+	# 15 MB PDF (MAX_UPLOAD_MB) on a slow connection is a slow request.
+	@upload path /api/documents
+	handle @upload {
+		reverse_proxy app:8000 {
+			transport http {
+				read_timeout 120s
+			}
+		}
+	}
+
+	handle {
+		reverse_proxy app:8000
+	}
+
+	# Access log as JSON, so it can be shipped somewhere structured later
+	# without reparsing. The application writes its own log with request ids;
+	# this one records what reached the edge, including requests the app never
+	# saw.
+	log {
+		output stdout
+		format json
+	}
+}
+
+# Security headers (CSP, HSTS, Referrer-Policy) are deliberately NOT set here.
+# They belong to the security-hardening milestone, where CSP can be run in
+# Report-Only against the real origin before being enforced — a CSP guessed in
+# advance and enforced on first deploy fails as a blank page. Caddy does send
+# HSTS automatically once a certificate is issued for a real domain.

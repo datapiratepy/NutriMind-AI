@@ -13,7 +13,12 @@ From zero to a running NutriMind AI. No prior knowledge assumed.
 
 ## 0. Python version
 
-**Use Python 3.13.** That is what CI runs and what the deployment image will use.
+**Use Python 3.13.** That is what CI runs and what the deployment image uses
+(`Dockerfile`, `python:3.13-slim-bookworm`).
+
+> Deploying rather than developing? You do not need any of this section — the
+> container carries its own interpreter and dependencies. See
+> [RUNBOOK.md](RUNBOOK.md) §0.
 
 The supported range is **3.11 – 3.14**, and it is not a matter of taste: the
 `ibm-watsonx-ai` SDK declares `Requires-Python >=3.11,<3.15`, so pip refuses to

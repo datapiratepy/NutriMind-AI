@@ -1,8 +1,19 @@
 # Deployment Guide
 
-How to run NutriMind AI beyond the development server. **Documentation
-only** — the internship deliverable runs locally; this records the
-production path a real deployment would take.
+How and why NutriMind AI is deployed the way it is. The **step-by-step
+procedures** — first deploy, upgrade, rollback, backup, restore, troubleshooting
+— live in [RUNBOOK.md](RUNBOOK.md). This file explains the decisions behind
+them.
+
+The deployment target is a single small VPS running the Compose stack in the
+repository root: the application behind Caddy, with one data volume.
+
+```bash
+cp .env.example .env          # then edit — see RUNBOOK.md §0
+docker compose build
+docker compose run --rm migrate
+docker compose up -d
+```
 
 ## Local (development)
 
@@ -14,16 +25,32 @@ features).
 
 **One process, many threads. Never multiple worker processes.**
 
-```bash
-pip install waitress
-waitress-serve --host 127.0.0.1 --port 8000 --threads 8 --call nutrimind:create_app
+The container does this for you:
+
+```
+CMD waitress-serve --host=0.0.0.0 --port=8000 --threads=8 --channel-timeout=120 wsgi:app
 ```
 
-gunicorn on Linux — note `-w 1`, and threads instead of workers:
+Outside the container, the same thing:
 
 ```bash
-gunicorn -w 1 -k gthread --threads 8 -b 127.0.0.1:8000 "nutrimind:create_app()"
+waitress-serve --host 127.0.0.1 --port 8000 --threads 8 wsgi:app
 ```
+
+Three details in that command line are deliberate.
+
+**`waitress`, and it is a pinned dependency** in `requirements.txt` — not a
+`pip install` at deploy time. Everything else the application runs on is pinned
+and scanned by `pip-audit` in CI; the one component directly exposed to the
+internet must not be the exception. Waitress rather than gunicorn because it is
+the same server on Windows and Linux, so what is tested locally is what runs.
+
+**`wsgi:app`, not `--call nutrimind:create_app`.** The `wsgi` module installs the
+SIGTERM handler that drains in-flight indexing. An app factory must not do that
+as a side effect of being called — the test suite calls it hundreds of times,
+and `signal.signal` raises outside the main thread.
+
+**`--threads 8`, and exactly one process.** See below.
 
 ### Why not several workers
 
@@ -152,12 +179,30 @@ signed cookies, so `FLASK_SECRET_KEY` is what protects them: set it explicitly
 in production (see above). Changing it signs everyone out, which is the
 emergency lever if a session is ever suspected of being stolen.
 
-Cookie flags are set automatically: `HttpOnly` always, `SameSite=Lax` always,
-and `Secure` whenever `FLASK_DEBUG` is off — so production sessions are only
-ever sent over HTTPS. Terminate TLS in front of the app (see above) or browsers
-will refuse to send the cookie at all.
+Cookie flags are set automatically on **both** credential cookies: `HttpOnly`
+always, `SameSite=Lax` always, and `Secure` whenever `FLASK_DEBUG` is off — so
+production credentials are only ever sent over HTTPS. Terminate TLS in front of
+the app (see above) or browsers will refuse to send them at all.
 
-`SESSION_DAYS` (default 14) sets how long a session lasts.
+"Both" is load-bearing. Flask-Login keeps the "remember me" cookie on its own
+`REMEMBER_COOKIE_*` settings, which do **not** inherit from `SESSION_COOKIE_*`.
+Left unset — as they were until Milestone 5 — its defaults applied, and the
+measured result was:
+
+```
+remember_token -> Expires=+365 days, HttpOnly, Path=/   (no Secure, no SameSite)
+session        -> Secure, HttpOnly, Path=/, SameSite=Lax
+```
+
+The longest-lived credential the application issues was the least protected one,
+and it silently overrode the documented session policy by a factor of 26. Both
+cookies are now configured together, and
+`tests/unit/test_cookie_policy.py` asserts the real `Set-Cookie` headers rather
+than the config dictionary — reading config would not have caught this.
+
+`SESSION_DAYS` (default 14) sets how long a session lasts, and now also bounds
+"remember me". Changing a password invalidates both, because the session
+identity embeds the password hash.
 
 ### Behind a reverse proxy: set `TRUSTED_PROXY_HOPS`
 
@@ -217,8 +262,14 @@ it was not chosen for.
 
 - Secrets stay in `.env` / the platform's secret store — never in the image
   or repo. Rotate the IBM key if it ever leaks.
-- Keep `MAX_UPLOAD_MB` conservative; uploads are validated but disk is
-  finite.
+- Keep `MAX_UPLOAD_MB` conservative. It bounds one request; the rate limit on
+  `POST /api/documents` (10 per 10 minutes) is what bounds a sequence of them.
+  Uploads are validated by their **contents**, not by filename or the
+  `Content-Type` header — both of which the caller supplies. Before Milestone 5
+  an ELF binary named `report.pdf` was accepted with HTTP 202, written to disk
+  and left there; it is now rejected with 400 and the file is removed
+  immediately. This is the only endpoint that writes caller-controlled bytes to
+  disk, and a full volume takes the database and the vector store with it.
 - The in-memory rate limiter is per-process. Since the supported model is a
   single process (see "Production process model"), the configured limit is the
   effective limit — but it is also lost on restart, so put real limits at the
@@ -317,18 +368,61 @@ Timestamps are stored as naive UTC (`TIMESTAMP WITHOUT TIME ZONE`) on both
 dialects — see `nutrimind/utils/time.py` for why that convention was chosen
 over timezone-aware columns.
 
-Multi-user additionally needs `user_id` foreign keys; that is the next
-milestone, and it is what the migration tooling above exists to make routine.
+Multi-user support shipped in Milestone 3: every owned table carries a `user_id`
+foreign key, and the migration tooling above is what made that change routine
+against existing data.
+
+## SQLite journal mode
+
+The database runs in **WAL** with `synchronous=NORMAL`, set per connection in
+`nutrimind/__init__.py`. Under the default `delete` journal a writer blocks
+readers and a reader blocks the writer, which matters when eight request threads
+share one process.
+
+Measured on this codebase, and reported in both directions because the result
+was not uniformly positive:
+
+```
+write-only, 8 threads x 15 writes
+    delete : p50  34ms  p95 246ms  max 975ms  0 errors
+    wal    : p50  77ms  p95 250ms  max 591ms  0 errors      <- p50 worse
+
+mixed, 3 writers + 5 readers (the realistic shape)
+    delete : read p50 122ms  p95 271ms   wall 1.70s
+    wal    : read p50  92ms  p95 197ms   wall 1.36s
+                  -25%       -27%          -20%
+```
+
+WAL is not free everywhere: for purely serialised writes it costs a little. It
+is enabled because the real workload is read-dominated, and because there were
+**zero errors in either mode** — this is a latency choice, not a correctness one.
+
+`journal_mode` is a persistent property of the database file, so an existing
+deployment switches over on the first connection after upgrading, with no
+migration.
 
 ## State to persist across deploys
 
-`instance/` holds everything mutable: `nutrimind.db`, `uploads/`, `chroma/`
-and logs. Back it up or mount it as a volume. `NUTRIMIND_INSTANCE_DIR` and
-`CHROMA_DIR` relocate it if needed.
+`/data` in the container (`instance/` outside it) holds everything mutable:
+`nutrimind.db`, `uploads/`, `chroma/`, the generated `secret_key`, and logs.
+Compose mounts it as the named volume `nutrimind-data`.
 
-## Cloud options (future)
+Losing it loses accounts, documents and the vector index. `secret_key` in
+particular signs every session, so losing it signs everyone out and invalidates
+outstanding password-reset links.
 
-IBM Code Engine (fits the IBM story; containerize with a simple
-`python:3.11-slim` + waitress image), Render, or a small VPS. Remember:
-outbound HTTPS to `*.ml.cloud.ibm.com` and `iam.cloud.ibm.com` must be
-allowed for live mode.
+Backup and restore are `scripts/backup.sh` and `scripts/restore.sh`; procedures
+are in [RUNBOOK.md](RUNBOOK.md) §3–§4. The restore has been performed end to
+end, not just written.
+
+## Cloud options
+
+The Compose stack runs anywhere Docker does — a small VPS is the intended
+target. IBM Code Engine also fits the IBM story and takes the same image.
+
+For live watsonx mode, outbound HTTPS to `*.ml.cloud.ibm.com` and
+`iam.cloud.ibm.com` must be allowed.
+
+One constraint applies everywhere: **the platform must give the container
+persistent storage.** `/data` is a volume, and a platform with an ephemeral
+filesystem destroys every account on each deploy.

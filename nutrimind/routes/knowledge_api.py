@@ -18,11 +18,16 @@ lexical provider and is 125 sequential watsonx round-trips on the credentialed
 one, which is far too long to hold a request open behind a reverse proxy. Clients
 poll ``GET /api/documents`` for the outcome.
 
-Errors that are knowable immediately (not a PDF, wrong content type, duplicate
-content) are still returned synchronously as 400. Errors that can only be found
-by reading the file (corrupt, encrypted, scanned, no extractable text) now
-surface as ``status='failed'`` with the message on the row, because by then the
-uploader's request has already been answered.
+Errors that are knowable immediately (not a PDF by name, wrong content type,
+contents that are not a PDF, duplicate content) are still returned synchronously
+as 400. Errors that can only be found by parsing the file (corrupt, encrypted,
+scanned, no extractable text) surface as ``status='failed'`` with the message on
+the row, because by then the uploader's request has already been answered.
+
+Upload is rate limited. It is the only endpoint that writes attacker-controlled
+bytes to disk, and ``MAX_UPLOAD_MB`` bounds one request rather than a sequence
+of them — without a limit, a single authenticated account can fill the volume
+and take the database and vector store down with it.
 """
 
 from __future__ import annotations
@@ -35,6 +40,7 @@ from nutrimind.extensions import db
 from nutrimind.models import Document
 from nutrimind.routes import current_user_id, ok
 from nutrimind.services.rag_service import get_rag_service
+from nutrimind.utils.decorators import rate_limit
 from nutrimind.utils.validators import sanitize_text, validate_range
 
 knowledge_api = Blueprint("knowledge_api", __name__, url_prefix="/api")
@@ -85,6 +91,7 @@ def list_documents():
 
 
 @knowledge_api.post("/documents")
+@rate_limit(max_calls=10, per_seconds=600)
 def upload_document():
     file = request.files.get("file")
     if file is None:

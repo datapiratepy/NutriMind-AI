@@ -143,6 +143,78 @@ def test_submitting_after_shutdown_is_refused(app):
 
 # -- wiring -------------------------------------------------------------------
 
+# -- graceful shutdown ---------------------------------------------------------
+
+def test_drain_finishes_work_that_is_already_running(app):
+    """A deploy should finish the document it was indexing, not abandon it."""
+    runner = JobRunner(app, max_workers=2, queue_limit=8)
+    finished = threading.Event()
+    started = threading.Event()
+
+    def slow():
+        started.set()
+        threading.Event().wait(0.3)
+        finished.set()
+
+    runner.submit(slow)
+    assert started.wait(10)
+    assert runner.drain(timeout=20) is True
+    assert finished.is_set(), "drain returned before in-flight work completed"
+
+
+def test_drain_refuses_new_work_immediately(app):
+    """Otherwise a shutdown can be outrun by fresh uploads."""
+    runner = JobRunner(app, max_workers=1, queue_limit=8)
+    runner.drain(timeout=5)
+    with pytest.raises(JobQueueFull):
+        runner.submit(lambda: None)
+
+
+def test_drain_reports_failure_rather_than_blocking_forever(app):
+    """A job that outlasts the grace period must not hold a deploy open.
+
+    Returning False is the honest outcome: Milestone 4 made an abandoned job
+    recoverable, so the caller logs and exits instead of waiting indefinitely.
+    """
+    runner = JobRunner(app, max_workers=1, queue_limit=8)
+    release = threading.Event()
+    runner.submit(release.wait)
+    try:
+        assert runner.drain(timeout=0.3) is False
+    finally:
+        release.set()
+        runner.wait_idle(10)
+        runner.shutdown()
+
+
+def test_drain_on_an_idle_runner_is_immediate(app):
+    runner = JobRunner(app, max_workers=2, queue_limit=8)
+    assert runner.drain(timeout=5) is True
+
+
+def test_signal_handlers_chain_rather_than_replace(app, monkeypatch):
+    """Swallowing SIGTERM would leave the container to be SIGKILLed instead."""
+    import signal
+
+    from nutrimind.services.jobs import install_signal_handlers
+
+    installed = {}
+    seen = []
+
+    def fake_signal(signum, handler):
+        installed[signum] = handler
+        return lambda s, f: seen.append(("previous", s))
+
+    monkeypatch.setattr(signal, "signal", fake_signal)
+    runner = JobRunner(app, max_workers=1, queue_limit=4)
+    install_signal_handlers(runner)
+
+    assert signal.SIGTERM in installed and signal.SIGINT in installed
+    installed[signal.SIGTERM](signal.SIGTERM, None)
+    assert seen == [("previous", signal.SIGTERM)], "the prior handler was not called"
+    assert runner.pending == 0
+
+
 def test_get_jobs_returns_the_runner_the_app_was_given(app):
     made = init_jobs(app, max_workers=1, queue_limit=3)
     assert get_jobs(app) is made

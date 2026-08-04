@@ -27,6 +27,10 @@ python-dotenv==1.2.2
 # are pinned, transitive ones are resolved.
 flask-migrate==4.1.0
 
+# Production WSGI server (see requirements.in for why it is pinned here rather
+# than installed at deploy time, and why waitress rather than gunicorn).
+waitress==3.0.2
+
 # PostgreSQL driver (see requirements.in for why it is not an optional extra).
 psycopg[binary]==3.3.4
 

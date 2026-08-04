@@ -38,6 +38,42 @@ _lock = threading.Lock()
 _service: "RAGService | None" = None
 
 
+#: A PDF must begin with "%PDF-" followed by a version. The specification allows
+#: leading junk before the header, and some real files have it, so the marker is
+#: searched for within a small prefix rather than required at byte zero.
+_PDF_MAGIC = b"%PDF-"
+_MAGIC_SEARCH_BYTES = 1024
+
+
+def _require_pdf_bytes(path: Path) -> None:
+    """Reject a file whose *contents* are not a PDF, whatever it is named.
+
+    Before this, validation was ``filename.endswith(".pdf")`` plus the
+    ``Content-Type`` header — both supplied by the caller. Measured against the
+    running API, an ELF binary, an HTML page containing a script tag and a ZIP
+    header were all accepted with HTTP 202, written into ``instance/uploads``,
+    and left there when pypdf later failed to parse them.
+
+    Checking the magic number is not a security boundary on its own — a real PDF
+    can still be malicious, and pypdf remains the thing that actually parses it.
+    What it does is keep arbitrary bytes off the disk and turn a confusing
+    asynchronous "failed" row into an immediate, accurate 400.
+
+    :raises ValidationError: the file is not a PDF.
+    """
+    try:
+        with path.open("rb") as handle:
+            prefix = handle.read(_MAGIC_SEARCH_BYTES)
+    except OSError as exc:  # pragma: no cover — unreadable temp file
+        raise ValidationError("The uploaded file could not be read.") from exc
+
+    if _PDF_MAGIC not in prefix:
+        raise ValidationError(
+            "That file is not a PDF.",
+            hint="The name ends in .pdf but the contents are something else. "
+                 "Export or re-save the document as a real PDF.")
+
+
 class RAGService:
     """Upload, index, re-index, delete and search knowledge documents."""
 
@@ -80,12 +116,17 @@ class RAGService:
         target = self._settings.instance_dir / "uploads" / name
         target.parent.mkdir(parents=True, exist_ok=True)
         file.save(target)
+        # Everything above trusts the client: the filename is theirs and so is
+        # the Content-Type header. From here the file's own bytes are the
+        # authority. Any rejection past this point must remove what was written,
+        # or a caller can fill the disk with rejected uploads.
         try:
+            _require_pdf_bytes(target)
             document = register_document(
                 target, original_filename=original, stored_name=stored,
                 user_id=user_id, condition_tags=condition_tags)
         except ValidationError:
-            target.unlink(missing_ok=True)  # duplicate — keep disk clean
+            target.unlink(missing_ok=True)
             raise
         self.queue_processing(document)
         return document

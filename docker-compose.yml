@@ -1,0 +1,83 @@
+# NutriMind AI — production stack: the app behind Caddy, with one data volume.
+#
+#     docker compose up -d --build
+#
+# Migrations are NOT run by these services. They are a deliberate step before
+# starting the new app container — see docs/RUNBOOK.md and the `migrate` profile
+# at the bottom of this file.
+
+services:
+  app:
+    build: .
+    image: nutrimind:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Behind Caddy, so the client's address arrives in X-Forwarded-For. Left
+      # at 0 the rate limiter sees only Caddy's address and counts every user in
+      # the world as one — ten failed sign-ins would lock out the whole site.
+      TRUSTED_PROXY_HOPS: "1"
+      # /data is the volume below; everything mutable lives under it.
+      NUTRIMIND_INSTANCE_DIR: /data
+      FLASK_DEBUG: "0"
+      LOG_LEVEL: INFO
+    volumes:
+      - nutrimind-data:/data
+    # Not published to the host. Only Caddy may reach the app, so the WSGI
+    # server is never directly exposed even if the firewall is misconfigured.
+    expose:
+      - "8000"
+    # SIGTERM drains in-flight indexing (wsgi.py). 40s is comfortably above the
+    # drain's own 25s budget; a job that outlives it is recovered as 'failed' on
+    # the next start rather than being lost.
+    stop_grace_period: 40s
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=4).status == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"     # HTTP/3
+    environment:
+      # Set both in .env. NUTRIMIND_DOMAIN drives the automatic certificate;
+      # use `localhost` to test the stack without a public DNS name.
+      NUTRIMIND_DOMAIN: ${NUTRIMIND_DOMAIN:-localhost}
+      NUTRIMIND_TLS_EMAIL: ${NUTRIMIND_TLS_EMAIL:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data        # certificates — losing this re-issues them and
+                                # can hit Let's Encrypt rate limits
+      - caddy-config:/config
+
+  # Schema changes, run explicitly and once:
+  #
+  #     docker compose run --rm migrate
+  #
+  # A profile, so `docker compose up` never starts it. Migrating from the app's
+  # own entrypoint would re-run on every restart, and a crash-looping container
+  # would retry a failing migration against live data indefinitely.
+  migrate:
+    profiles: ["tools"]
+    build: .
+    image: nutrimind:latest
+    env_file: .env
+    environment:
+      NUTRIMIND_INSTANCE_DIR: /data
+    volumes:
+      - nutrimind-data:/data
+    command: >
+      sh -c "python scripts/upgrade_database.py && python scripts/check_schema.py"
+
+volumes:
+  nutrimind-data:
+  caddy-data:
+  caddy-config:

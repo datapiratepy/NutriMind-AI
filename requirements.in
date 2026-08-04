@@ -9,7 +9,7 @@
 #     pip install pip-tools
 #     pip-compile requirements.in --output-file requirements.txt
 #
-# Run pip-compile on the same Python version as CI and production (3.11).
+# Run pip-compile on the same Python version as CI and production (3.13).
 
 # Web framework
 flask>=3.0
@@ -19,6 +19,21 @@ python-dotenv>=1.0
 
 # Session-cookie authentication.
 flask-login>=0.6
+
+# Production WSGI server.
+#
+# A runtime dependency, not a deploy-time `pip install`. Everything else the
+# application runs on is pinned here and scanned by pip-audit in CI; the one
+# component directly exposed to the internet must not be the exception, chosen
+# by whatever the registry happened to serve on deployment day.
+#
+# Waitress rather than gunicorn for one reason: it is the same server on Windows
+# and Linux, so what is tested locally is what runs in the container. gunicorn
+# would mean the development machine and production never run the same code.
+#
+# >=3.0.1: 3.0.0 and earlier are affected by request-smuggling advisories
+# (CVE-2024-49768 / CVE-2024-49769).
+waitress>=3.0.1
 
 # Database schema migrations (Alembic, wired to the app factory).
 # Runtime, not dev-only: production applies migrations as a deployment step.

@@ -1,0 +1,47 @@
+# Keep the build context small and keep secrets and local state out of the image.
+#
+# instance/ and .env are the important entries. Copying a developer's instance/
+# would bake their database, uploaded PDFs and generated secret key into a
+# published image; copying .env would bake IBM credentials into a layer that
+# `docker history` will happily show anyone.
+
+.git
+.github
+.gitignore
+
+# Local runtime state — the image gets an empty /data volume instead.
+instance/
+*.db
+*.db-wal
+*.db-shm
+*.db.bak
+*.db.*backup*
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Python noise
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+*.egg-info/
+
+# Tests and tooling are not needed at runtime. They are still run in CI against
+# the source tree, and the image is built from that same commit.
+tests/
+requirements-dev.txt
+
+# Docs and editor state
+docs/archive/
+.vscode/
+.idea/
+*.swp
+.DS_Store

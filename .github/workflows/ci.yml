@@ -105,3 +105,69 @@ jobs:
           APP_MODE: demo
           DATABASE_URI: postgresql+psycopg://nutrimind:nutrimind@localhost:5432/nutrimind_test
         run: python scripts/check_schema.py
+
+  # The deployment artefacts are code too, and they break the same way anything
+  # untested breaks. This job builds the real image and runs the real deployment
+  # commands inside it, so a Dockerfile that no longer installs, a wsgi module
+  # that no longer imports, or a migration step that fails in the container is a
+  # red build rather than a discovery during a deploy.
+  docker:
+    name: image build · migrations · schema
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the production image
+        run: docker build -t nutrimind:ci .
+
+      # The container must not run as root. Checked rather than assumed: a
+      # stray USER directive or a base-image change can silently undo it.
+      - name: Assert the image runs as a non-root user
+        run: |
+          uid=$(docker run --rm nutrimind:ci id -u)
+          test "$uid" != "0" || { echo "image runs as root"; exit 1; }
+          echo "runtime uid=$uid"
+
+      # Exactly the command docs/RUNBOOK.md tells an operator to run, executed
+      # in the image that will actually run it.
+      - name: Apply migrations inside the image
+        run: |
+          docker run --rm -e APP_MODE=demo -e NUTRIMIND_INSTANCE_DIR=/data \
+            -e FLASK_SECRET_KEY=ci-not-a-placeholder-value-abcdef123456 \
+            -v ci-data:/data nutrimind:ci python scripts/upgrade_database.py
+
+      - name: Assert the schema matches the models inside the image
+        run: |
+          docker run --rm -e APP_MODE=demo -e NUTRIMIND_INSTANCE_DIR=/data \
+            -e FLASK_SECRET_KEY=ci-not-a-placeholder-value-abcdef123456 \
+            -v ci-data:/data nutrimind:ci python scripts/check_schema.py
+
+      # Booting is not the same as serving. This starts the real entry point and
+      # waits for the health endpoint the container's own HEALTHCHECK uses.
+      - name: Boot the container and wait for /api/health
+        run: |
+          docker run -d --name nutrimind-ci -p 8000:8000 \
+            -e APP_MODE=demo -e NUTRIMIND_INSTANCE_DIR=/data \
+            -e FLASK_SECRET_KEY=ci-not-a-placeholder-value-abcdef123456 \
+            -v ci-data:/data nutrimind:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/api/health > /tmp/health.json; then
+              cat /tmp/health.json; echo; break
+            fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:8000/api/health > /dev/null
+
+      # SIGTERM must drain background indexing rather than be ignored. `docker
+      # stop` sends SIGTERM and then SIGKILLs after the timeout, so an exit
+      # inside the window is the evidence that the handler ran.
+      - name: Assert the container stops gracefully on SIGTERM
+        run: |
+          start=$(date +%s)
+          docker stop --timeout 40 nutrimind-ci
+          echo "stopped in $(( $(date +%s) - start ))s"
+          docker logs nutrimind-ci 2>&1 | tail -20
+
+      - name: Clean up
+        if: always()
+        run: docker rm -f nutrimind-ci 2>/dev/null || true

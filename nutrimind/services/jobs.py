@@ -44,6 +44,7 @@ pool.
 from __future__ import annotations
 
 import logging
+import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import Callable
@@ -157,6 +158,31 @@ class JobRunner:
             self._shutdown = True
         self._executor.shutdown(wait=wait)
 
+    def drain(self, timeout: float = 25.0) -> bool:
+        """Stop accepting work, then let what is running finish.
+
+        The two halves are the point. Refusing new submissions immediately means
+        a shutdown cannot be outrun by fresh uploads; waiting for the in-flight
+        ones means a document being indexed when the deploy started is finished
+        rather than abandoned.
+
+        Returns False if the wait expired with work still running. That is not
+        an error — Milestone 4 made an abandoned job recoverable, so the caller
+        logs it and exits rather than blocking a deployment indefinitely.
+        """
+        with self._idle:
+            self._shutdown = True
+            outstanding = self._pending
+        if outstanding:
+            logger.info("draining %d background job(s) before shutdown", outstanding)
+        drained = self.wait_idle(timeout)
+        if not drained:
+            logger.warning(
+                "shutdown timed out with %d job(s) still running; they will be "
+                "recovered as 'failed' on the next start", self.pending)
+        self._executor.shutdown(wait=False)
+        return drained
+
 
 # -- wiring -------------------------------------------------------------------
 
@@ -165,6 +191,39 @@ def init_jobs(app: Flask, *, max_workers: int = 2, queue_limit: int = 32) -> Job
     runner = JobRunner(app, max_workers=max_workers, queue_limit=queue_limit)
     app.extensions[EXTENSION_KEY] = runner
     return runner
+
+
+def install_signal_handlers(runner: JobRunner) -> None:
+    """Drain the pool on SIGTERM/SIGINT, then re-raise the default behaviour.
+
+    Off by default and opted into by the server entry points only. Installing
+    process-wide signal handlers as a side effect of building an app object
+    would be wrong in tests (which build hundreds of apps) and impossible in a
+    worker thread, where ``signal.signal`` raises ValueError.
+
+    Chaining rather than replacing: whatever was installed before — the WSGI
+    server's own graceful-stop handler, or Python's default — still runs after
+    the drain. Swallowing SIGTERM would leave a container to be SIGKILLed by
+    its runtime instead of exiting cleanly.
+    """
+    import signal
+
+    def _handler(signum, frame):
+        logger.info("received %s — draining background jobs",
+                    signal.Signals(signum).name)
+        runner.drain()
+        if callable(previous.get(signum)):
+            previous[signum](signum, frame)
+        elif previous.get(signum) == signal.SIG_DFL:
+            signal.signal(signum, signal.SIG_DFL)
+            os.kill(os.getpid(), signum)
+
+    previous: dict[int, object] = {}
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            previous[sig] = signal.signal(sig, _handler)
+        except (ValueError, OSError):  # pragma: no cover — not the main thread
+            logger.debug("could not install handler for %s", sig)
 
 
 def get_jobs(app: Flask) -> JobRunner:

@@ -257,7 +257,8 @@ JS (no build step) · pytest
 | [AGENTS.md](docs/AGENTS.md) | Agent contracts and the streaming event protocol |
 | [INSTALLATION.md](docs/INSTALLATION.md) | Local setup |
 | [IBM_SETUP.md](docs/IBM_SETUP.md) | Zero-to-connected IBM walkthrough |
-| [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Running it beyond the dev server |
+| [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Why the deployment is shaped the way it is |
+| [RUNBOOK.md](docs/RUNBOOK.md) | Deploy, upgrade, roll back, back up, restore, troubleshoot |
 | [IMPLEMENTATION_NOTES.md](docs/IMPLEMENTATION_NOTES.md) | Decisions and trade-offs made during the build |
 | [MANUAL_TESTING.md](docs/MANUAL_TESTING.md) | Step-by-step verification guide |
 | [RELEASE_NOTES.md](docs/RELEASE_NOTES.md) | v1.0 summary, limitations, roadmap |
@@ -265,11 +266,28 @@ JS (no build step) · pytest
 Internship submission material (presentation, demo script, checklists) is kept
 for provenance in [docs/archive/](docs/archive/).
 
+## Deployment
+
+The production stack is a container behind Caddy with one data volume:
+
+```bash
+cp .env.example .env          # set FLASK_SECRET_KEY and NUTRIMIND_DOMAIN
+docker compose build
+docker compose run --rm migrate      # schema changes are an explicit step
+docker compose up -d
+```
+
+Caddy obtains and renews the TLS certificate automatically. Migrations never run
+from the app container, so a restart loop cannot re-run a failing migration
+against live data. Full procedures — upgrade, rollback, backup, restore,
+troubleshooting — are in [RUNBOOK.md](docs/RUNBOOK.md).
+
 ## Future improvements
 
-Multi-user accounts (FK migration path prepared) · weekly PDF reports ·
-retrieval reranking for large knowledge bases · vendored UI assets for
-offline demos · threshold auto-tuning against live embeddings.
+Weekly PDF reports · retrieval reranking for large knowledge bases · vendored UI
+assets for offline demos · threshold auto-tuning against live embeddings ·
+security headers (CSP, HSTS, SRI) · error tracking and uptime monitoring ·
+transactional email for password resets.
 
 ## License
 
