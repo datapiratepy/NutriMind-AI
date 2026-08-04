@@ -63,7 +63,7 @@ chromadb>=0.5
 pypdf>=4.0
 
 # PDF export
-reportlab>=4.0
+reportlab>=5.0.0
 
 # Optional local embedding fallback (heavy: pulls PyTorch). Install only if you
 # want offline embeddings: pip install sentence-transformers
