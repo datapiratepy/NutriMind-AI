@@ -88,3 +88,46 @@ def test_upload_uses_the_wrapper():
     assert "NM.fetch(\"/api/documents\"" in source, (
         "the document upload no longer goes through NM.fetch — it will be "
         "rejected for a missing CSRF token")
+
+
+# -- the asynchronous upload contract -----------------------------------------
+
+def test_upload_does_not_claim_the_document_is_indexed():
+    """Upload answers 202 'queued', so the toast must not report an outcome.
+
+    The old message read ``Indexed "<name>" — N chunks`` from the response body.
+    Against an asynchronous API those fields are ``pending`` and ``0``, so the
+    user would be told their document was indexed with zero chunks while the
+    table beneath it said "pending".
+    """
+    source = _strip_comments((JS_DIR / "knowledge.js").read_text(encoding="utf-8"))
+    upload_body = source.split("async function upload")[1].split("drop.addEventListener")[0]
+    assert "Indexed" not in upload_body, (
+        "the upload toast claims the document is indexed; the 202 response only "
+        "means it was accepted and queued")
+    assert "Queued" in upload_body
+
+
+def test_the_document_table_polls_while_work_is_outstanding():
+    """Polling is now the only way a user learns the outcome.
+
+    While ingestion was synchronous this branch was unreachable — the upload
+    response already said 'indexed' — so losing it would not have failed any
+    test. It is load-bearing now.
+    """
+    source = _strip_comments((JS_DIR / "knowledge.js").read_text(encoding="utf-8"))
+    assert "processing" in source and "pending" in source, (
+        "the table no longer recognises non-terminal states, so it will never poll")
+    assert "setTimeout(refresh" in source, "the refresh poll is gone"
+
+
+def test_polling_uses_a_single_timer():
+    """Every manual Refresh during indexing would otherwise start another chain.
+
+    The timers multiply rather than replace, so the page ends up calling the API
+    several times per second and never stops.
+    """
+    source = _strip_comments((JS_DIR / "knowledge.js").read_text(encoding="utf-8"))
+    assert "clearTimeout" in source, (
+        "refresh() does not clear its pending timer, so repeated refreshes stack "
+        "into overlapping polling loops")

@@ -2,9 +2,25 @@
 
 State machine on ``Document.status`` (model owns the transitions):
 ``pending → processing → indexed | failed``. SHA-256 dedup prevents the same
-file from being indexed twice. Ingestion is synchronous by design — typical
-guideline PDFs index in seconds and the UI polls status regardless (see
-docs/IMPLEMENTATION_NOTES.md).
+file from being indexed twice.
+
+The pipeline is split in two because the halves have very different costs and
+very different failure modes:
+
+``register_document``
+    Cheap and synchronous: hash the file, reject a duplicate, create the row as
+    ``pending``. Runs inside the HTTP request so the uploader gets an immediate,
+    specific answer for the things that are knowable immediately.
+
+``process_document``
+    Slow and asynchronous: extract, chunk, embed, index. Measured at 12.0s for a
+    400-page PDF on the lexical provider, and far longer on watsonx, where
+    embeddings go out in batches of 16 — 125 sequential HTTP round-trips for the
+    same document. This runs on a background thread (``services/jobs.py``) so it
+    cannot hold a request open or hit a reverse proxy's timeout.
+
+``ingest_pdf`` composes both synchronously and is kept for the seeding CLI,
+where blocking is the correct behaviour.
 """
 
 from __future__ import annotations
@@ -79,24 +95,27 @@ def resolve_document_path(document: Document, settings: Settings) -> Path:
     return settings.base_dir / document.stored_name
 
 
-def ingest_pdf(
+def register_document(
     path: Path,
     *,
     original_filename: str,
     stored_name: str,
-    settings: Settings,
-    vector_store: VectorStore,
     user_id: int,
     condition_tags: list[str] | None = None,
 ) -> Document:
-    """Run the full pipeline for one PDF; returns the Document row.
+    """Hash, reject duplicates, and create the row as ``pending``.
 
-    On processing failure the Document is kept with ``status='failed'`` and
-    the error stored for the knowledge page, then the exception re-raised so
-    the API can return a meaningful response.
+    The synchronous half of ingestion. Everything here is cheap and everything
+    here is knowable while the uploader is still waiting, so it stays in the
+    request: a duplicate must be reported as a 400 the user can act on, not
+    discovered on a background thread and shown as a mysterious ``failed`` row
+    thirty seconds later.
+
+    ``pending`` was already in ``STATUSES`` and was previously dead — every row
+    was created as ``processing`` — so queued work needed no new state and no
+    migration.
 
     :raises ValidationError: duplicate content (same SHA-256 already indexed).
-    :raises DocumentProcessingError: extraction/embedding/indexing failures.
     """
     digest = sha256_of(path)
     # Scoped to the uploader: the same public guideline PDF being uploaded by
@@ -114,10 +133,42 @@ def ingest_pdf(
         )
 
     document = Document(filename=original_filename, stored_name=stored_name,
-                        sha256=digest, status="processing", user_id=user_id,
+                        sha256=digest, status="pending", user_id=user_id,
                         condition_tags=condition_tags or [])
     db.session.add(document)
     db.session.commit()  # ID needed for chunk metadata; status visible to UI
+    return document
+
+
+def process_document(document: Document, *, settings: Settings,
+                     vector_store: VectorStore) -> Document:
+    """Extract → chunk → embed → index one registered document.
+
+    The asynchronous half. Serves both first-time indexing and re-indexing:
+    they differed only in whether old vectors had to be cleared first, and
+    clearing unconditionally is both simpler and safer. ``delete_document`` on a
+    document with no vectors is a no-op, while a first index that died part-way
+    through *does* leave chunks behind — so starting from a clean slate is what
+    makes re-running a partially-completed ingest correct rather than duplicative.
+
+    On failure the row is kept with ``status='failed'`` and the message stored
+    for the knowledge page, then the exception is re-raised so a synchronous
+    caller can still react to it.
+
+    :raises DocumentProcessingError: extraction/embedding/indexing failures.
+    """
+    path = resolve_document_path(document, settings)
+    if not path.exists():
+        message = (f"The stored file for '{document.filename}' is missing.")
+        document.mark_failed(message)
+        db.session.commit()
+        raise DocumentProcessingError(
+            message, hint="Delete the entry and upload the PDF again.")
+
+    vector_store.delete_document(document.id)
+    document.status = "processing"
+    document.chunk_count = 0
+    db.session.commit()
 
     try:
         pages = extract_pages(path)
@@ -128,44 +179,6 @@ def ingest_pdf(
         embeddings = vector_store.provider.embed_documents([c.text for c in chunks])
         vector_store.add_chunks(
             document_id=document.id,
-            filename=original_filename,
-            uploaded_at=utcnow().isoformat(timespec="seconds"),
-            chunks=chunks,
-            embeddings=embeddings,
-        )
-        document.mark_indexed(pages=len(pages), chunk_count=len(chunks))
-        db.session.commit()
-        logger.info("indexed '%s': %d pages -> %d chunks (provider=%s)",
-                    original_filename, len(pages), len(chunks),
-                    vector_store.provider.name)
-        return document
-    except Exception as exc:  # noqa: BLE001 — record failure, then re-raise
-        document.mark_failed(str(exc))
-        db.session.commit()
-        logger.warning("ingestion failed for '%s': %s", original_filename, exc)
-        raise
-
-
-def reindex_document(document: Document, *, settings: Settings,
-                     vector_store: VectorStore) -> Document:
-    """Re-run extract→chunk→embed→index for an existing document."""
-    path = resolve_document_path(document, settings)
-    if not path.exists():
-        raise DocumentProcessingError(
-            f"The stored file for '{document.filename}' is missing.",
-            hint="Delete the entry and upload the PDF again.",
-        )
-    vector_store.delete_document(document.id)
-    document.status = "processing"
-    document.chunk_count = 0
-    db.session.commit()
-    try:
-        pages = extract_pages(path)
-        chunks = chunk_pages(pages, chunk_size=settings.rag.chunk_size,
-                             overlap=settings.rag.chunk_overlap)
-        embeddings = vector_store.provider.embed_documents([c.text for c in chunks])
-        vector_store.add_chunks(
-            document_id=document.id,
             filename=document.filename,
             uploaded_at=utcnow().isoformat(timespec="seconds"),
             chunks=chunks,
@@ -173,8 +186,42 @@ def reindex_document(document: Document, *, settings: Settings,
         )
         document.mark_indexed(pages=len(pages), chunk_count=len(chunks))
         db.session.commit()
+        logger.info("indexed '%s': %d pages -> %d chunks (provider=%s)",
+                    document.filename, len(pages), len(chunks),
+                    vector_store.provider.name)
         return document
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — record failure, then re-raise
         document.mark_failed(str(exc))
         db.session.commit()
+        logger.warning("ingestion failed for '%s': %s", document.filename, exc)
         raise
+
+
+def ingest_pdf(
+    path: Path,
+    *,
+    original_filename: str,
+    stored_name: str,
+    settings: Settings,
+    vector_store: VectorStore,
+    user_id: int,
+    condition_tags: list[str] | None = None,
+) -> Document:
+    """Register and index one PDF synchronously; returns the Document row.
+
+    Kept for the seeding CLI (``scripts/seed_knowledge_base.py``), where the
+    caller is a one-shot script that should block until the work is done and
+    report the outcome as its exit status. Request handling uses the two halves
+    separately so the slow one can run off the request thread.
+    """
+    document = register_document(path, original_filename=original_filename,
+                                stored_name=stored_name, user_id=user_id,
+                                condition_tags=condition_tags)
+    return process_document(document, settings=settings, vector_store=vector_store)
+
+
+# ``reindex_document`` used to live here. It is gone rather than deprecated:
+# re-indexing is now queued like any other indexing run (RAGService.reindex ->
+# queue_processing), so the only thing it did was call ``process_document`` with
+# the same arguments. Leaving a second name for one behaviour is how two code
+# paths drift apart.

@@ -61,11 +61,18 @@ The architecture documents remain the source of truth; entries here explain
   credentials. It is never selected silently: resolution logs a warning and
   ``/api/system/info`` reports the active provider. Each provider owns its
   Chroma collection (``kb_watsonx`` / ``kb_local`` / ``kb_lexical``).
-- **Ingestion is synchronous** (deviation from "index on first startup"):
-  seed docs are indexed via ``scripts/seed_knowledge_base.py`` instead of at
-  boot. Explicit beats implicit — startup stays fast and no watsonx tokens
-  are consumed without an operator action. The UI still polls status because
-  failures persist as ``status='failed'`` with the stored error.
+- **Seed documents are indexed by a script, not at boot**
+  (``scripts/seed_knowledge_base.py``). Explicit beats implicit — startup stays
+  fast and no watsonx tokens are consumed without an operator action. That path
+  stays synchronous: a one-shot CLI should know whether it worked before it
+  exits.
+- **Uploads are indexed asynchronously** (Milestone 4). ``POST /api/documents``
+  answers ``202 Accepted`` with the document ``pending``; the work runs on a
+  bounded in-process thread pool and the UI polls until the state is terminal.
+  Measured: 12.0s for a 400-page PDF on the lexical provider, and 125 sequential
+  watsonx round-trips for the same document on the credentialed one. Before this,
+  the polling branch in ``knowledge.js`` was unreachable — the upload response
+  already said ``indexed``, so no document was ever in a non-terminal state.
 - **Duplicate protection** is content-based (SHA-256), not filename-based;
   re-uploading identical bytes under a new name returns a 400 with a hint.
 - **`NUTRIMIND_INSTANCE_DIR` override** added so tests isolate uploads,

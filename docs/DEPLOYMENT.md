@@ -12,14 +12,65 @@ features).
 
 ## Production process model
 
-Use a WSGI server. The app factory makes this a one-liner:
+**One process, many threads. Never multiple worker processes.**
 
 ```bash
 pip install waitress
-waitress-serve --host 127.0.0.1 --port 8000 --call nutrimind:create_app
+waitress-serve --host 127.0.0.1 --port 8000 --threads 8 --call nutrimind:create_app
 ```
 
-(gunicorn on Linux: `gunicorn -w 2 -b 127.0.0.1:8000 "nutrimind:create_app()"`.)
+gunicorn on Linux — note `-w 1`, and threads instead of workers:
+
+```bash
+gunicorn -w 1 -k gthread --threads 8 -b 127.0.0.1:8000 "nutrimind:create_app()"
+```
+
+### Why not several workers
+
+Because they cannot share the vector store, and the way they fail is silent.
+
+ChromaDB keeps its data in two places with different sharing properties.
+Metadata lives in SQLite and *is* coherent across processes. The HNSW vector
+index is read through a **per-process cached reader that never refreshes**. Two
+processes on one Chroma directory therefore diverge. Measured on the pinned
+version (chromadb 1.5.9):
+
+| Reader's client opened… | `count()` | `get()` | `query()` |
+|---|---|---|---|
+| before any vectors existed | correct | correct | **raises** `InternalError: Error creating hnsw segment reader: Nothing found on disk` |
+| when it already held a segment | correct | correct | **silently cannot find** the peer's vectors |
+
+The second row is the dangerous one. A worker that did not perform the indexing
+reports the right chunk count — the knowledge page shows "indexed, 28 chunks",
+because that number comes from the coherent metadata path — and then finds
+nothing when it searches. Retrieval simply returns no results on whatever share
+of requests happen to land on that worker. No error is logged. It looks exactly
+like the retrieval bug fixed in Milestone 3.
+
+Writes are **not** the problem, and the store is **not** corrupted: two processes
+writing 120 interleaved records produced 120 correct, searchable rows. So
+`-w 2` does not damage anything — it makes half your workers unable to search.
+
+Threads are safe. One client under 8 concurrent writer threads and 3 concurrent
+reader threads completed 200 adds with zero errors, nothing lost, nothing
+unsearchable. That is why the answer is `--threads N` rather than `-w N`.
+
+The application enforces this rather than trusting the reader. On startup it
+takes an advisory lock on the Chroma directory; a second process finds the lock
+held and logs an error explaining the above. It does **not** refuse to start —
+a diagnostic that can prevent boot is worse than the problem it reports — so
+check your logs for `ANOTHER PROCESS IS ALREADY USING THIS CHROMA DIRECTORY`
+after a deploy.
+
+If you genuinely outgrow one process, the fix is to move Chroma out of the
+application — run it as a server (`chromadb.HttpClient`) or replace it — not to
+add workers.
+
+### Scaling within the one process
+
+`--threads` handles concurrent requests. Document indexing does **not** run on
+those threads; it runs on a separate bounded pool (`INGEST_WORKERS`, default 2)
+so a large upload cannot occupy a request thread. See "Document indexing" below.
 
 Production `.env` changes: a generated `FLASK_SECRET_KEY` and `LOG_LEVEL=INFO`.
 `FLASK_DEBUG` already defaults to off, so there is nothing to remember to turn
@@ -31,6 +82,56 @@ unset, a random key is generated once and stored in `instance/secret_key`; that
 is safe (it is never the placeholder value) but the key then lives outside your
 secret store, is not rotatable through your normal process, and is lost if the
 instance volume is ever recreated — which logs every user out.
+
+## Document indexing
+
+Uploading a PDF returns **202 Accepted** with the document `pending`. Extraction,
+chunking, embedding and indexing then run on a background pool inside the same
+process; the knowledge page polls `GET /api/documents` until the document reaches
+`indexed` or `failed`.
+
+This is not premature optimisation. Measured end to end on the zero-credential
+lexical provider:
+
+| pages | chunks | extract+chunk+embed | Chroma add | total |
+|---|---|---|---|---|
+| 50 | 250 | 0.74s | 0.37s | 1.11s |
+| 150 | 750 | 1.22s | 1.15s | 2.37s |
+| 400 | 2000 | 5.70s | 6.30s | **12.00s** |
+
+12s already sits inside the window where proxies start giving up, and the
+credentialed path is far worse: watsonx embeddings go out in batches of 16, so
+that same 400-page document is **125 sequential HTTP round-trips**. `MAX_UPLOAD_MB`
+defaults to 15, which permits documents roughly twenty times larger than the
+largest measured here.
+
+| variable | default | meaning |
+|---|---|---|
+| `INGEST_WORKERS` | 2 | threads available for indexing |
+| `INGEST_QUEUE_LIMIT` | 32 | documents that may be queued before uploads are refused |
+
+`INGEST_WORKERS` is deliberately small. Extraction and lexical embedding are pure
+Python and hold the GIL, so extra ingest threads compete with the threads serving
+requests instead of adding throughput. Raise it when embeddings go to watsonx,
+where the work is network I/O and releases the GIL. Beyond `INGEST_QUEUE_LIMIT`
+an upload is accepted, stored, and immediately marked `failed` with a message
+telling the user to retry — a bounded queue that refuses is better than an
+unbounded one that accepts work it will not start for hours.
+
+### Interrupted indexing
+
+`pending` and `processing` exist only in the memory of the process running the
+job. If that process stops — deploy, restart, OOM kill — nothing remains to
+finish the work or to record that it stopped.
+
+On startup, any document still in `pending` or `processing` is therefore moved to
+`failed` with "Indexing was interrupted when the application stopped. Use
+Re-index to run it again." A document can never be left in a state that nothing
+will ever change, which matters because the UI polls non-terminal states
+indefinitely.
+
+This runs only when the process holds the Chroma lock, so it cannot fail work
+that another live process is still doing.
 
 ## Reverse proxy + HTTPS
 
@@ -118,9 +219,10 @@ it was not chosen for.
   or repo. Rotate the IBM key if it ever leaks.
 - Keep `MAX_UPLOAD_MB` conservative; uploads are validated but disk is
   finite.
-- The in-memory rate limiter is per-process, so with several workers the
-  effective limit is `workers × max_calls`. Put real limits at the proxy
-  (nginx `limit_req`) for public exposure.
+- The in-memory rate limiter is per-process. Since the supported model is a
+  single process (see "Production process model"), the configured limit is the
+  effective limit — but it is also lost on restart, so put real limits at the
+  proxy (nginx `limit_req`) for public exposure.
 - Security headers (CSP, HSTS) and Subresource Integrity on the CDN assets are
   still outstanding — tracked as the security-hardening milestone.
 

@@ -1,13 +1,28 @@
 """Integration tests: the real knowledge-base API (upload → search → delete).
 
 A minimal multi-page PDF is generated in-memory (raw PDF syntax) so the suite
-never depends on external files; the hash embedding provider makes retrieval
+never depends on external files; the lexical embedding provider makes retrieval
 deterministic (identical text -> similarity 1.0).
+
+**Ingestion is asynchronous.** Upload returns 202 with the document ``pending``;
+indexing happens on a background thread. These tests therefore wait for the job
+runner to go idle instead of assuming the work is finished when the response
+arrives. They wait on the runner rather than sleeping or polling the status
+column, because a sleep long enough to be reliable on a loaded CI machine is
+also long enough to make the suite unpleasant, and a poll loop hides how long
+the work really took.
 """
 
 from __future__ import annotations
 
 import io
+
+
+def _drain(client):
+    """Block until queued indexing has finished. Fails loudly if it does not."""
+    from nutrimind.services.jobs import get_jobs
+
+    assert get_jobs(client.application).wait_idle(30), "ingest job never finished"
 
 
 def _build_pdf(page_texts: list[str]) -> bytes:
@@ -59,21 +74,37 @@ def _upload(client, filename: str = "nutrition-notes.pdf"):
     }, content_type="multipart/form-data")
 
 
-def test_upload_indexes_document(client):
+def test_upload_is_accepted_immediately_and_not_yet_indexed(client):
+    """202 means accepted, not done.
+
+    The response must not claim an outcome it cannot know: indexing has not run
+    when this returns. Reporting 'indexed' here is what the old synchronous
+    contract did, and it is what made the polling path in knowledge.js dead code.
+    """
     response = _upload(client)
-    assert response.status_code == 201
+    assert response.status_code == 202
     document = response.get_json()["document"]
-    assert document["status"] == "indexed"
-    assert document["pages"] == 2
-    assert document["chunk_count"] >= 2
+    assert document["status"] == "pending"
+    assert document["chunk_count"] == 0
     assert document["condition_tags"] == ["diabetes", "general"]
 
+
+def test_queued_document_reaches_indexed_in_the_background(client):
+    _upload(client)
+    _drain(client)
+
     listed = client.get("/api/documents").get_json()["documents"]
-    assert len(listed) == 1 and listed[0]["filename"] == "nutrition-notes.pdf"
+    assert len(listed) == 1
+    assert listed[0]["status"] == "indexed"
+    assert listed[0]["filename"] == "nutrition-notes.pdf"
+    assert listed[0]["pages"] == 2
+    assert listed[0]["chunk_count"] >= 2
 
 
 def test_duplicate_upload_rejected(client):
-    assert _upload(client).status_code == 201
+    """Dedup stays synchronous: it is knowable now, so it is answered now."""
+    assert _upload(client).status_code == 202
+    _drain(client)
     duplicate = _upload(client, filename="same-content.pdf")
     assert duplicate.status_code == 400
     assert "already indexed" in duplicate.get_json()["error"]["message"]
@@ -86,20 +117,38 @@ def test_non_pdf_rejected(client):
     assert response.status_code == 400
 
 
-def test_corrupt_pdf_marked_failed(client):
+def test_corrupt_pdf_fails_on_the_background_thread(client):
+    """A file this broken can only be discovered by reading it.
+
+    That now happens after the response, so the failure has to arrive on the row
+    rather than as an HTTP status. The upload itself is still accepted — which is
+    correct: nothing was wrong with the *request*.
+    """
     response = client.post("/api/documents", data={
         "file": (io.BytesIO(b"%PDF-1.4 garbage without structure"), "broken.pdf"),
     }, content_type="multipart/form-data")
-    assert response.status_code == 422
+    assert response.status_code == 202
+    _drain(client)
 
     listed = client.get("/api/documents").get_json()["documents"]
     assert listed[0]["status"] == "failed"
     assert listed[0]["error"]
 
 
+def test_a_failed_document_is_never_left_non_terminal(client):
+    """The property the UI depends on: polling must always stop."""
+    client.post("/api/documents", data={
+        "file": (io.BytesIO(b"%PDF-1.4 nonsense"), "broken.pdf"),
+    }, content_type="multipart/form-data")
+    _drain(client)
+    statuses = {d["status"] for d in client.get("/api/documents").get_json()["documents"]}
+    assert statuses.isdisjoint({"pending", "processing"})
+
+
 def test_search_returns_grounded_chunks_with_citations(client):
     _upload(client)
-    # Hash provider: identical text -> similarity 1.0, so query with page text.
+    _drain(client)
+    # Lexical provider: identical text -> similarity 1.0, so query with page text.
     response = client.get("/api/documents/search",
                           query_string={"q": PAGE_TWO, "k": 3})
     result = response.get_json()["result"]
@@ -112,15 +161,37 @@ def test_search_returns_grounded_chunks_with_citations(client):
     assert unrelated["grounded"] is False and unrelated["citations"] == []
 
 
-def test_reindex_document(client):
+def test_reindex_is_queued_and_completes(client):
+    """Re-indexing costs exactly what indexing costs, so it is queued too."""
     document_id = _upload(client).get_json()["document"]["id"]
+    _drain(client)
+
     response = client.post(f"/api/documents/{document_id}/reindex")
-    assert response.status_code == 200
-    assert response.get_json()["document"]["status"] == "indexed"
+    assert response.status_code == 202
+    assert response.get_json()["document"]["status"] == "pending"
+
+    _drain(client)
+    listed = client.get("/api/documents").get_json()["documents"]
+    assert listed[0]["status"] == "indexed"
+    assert listed[0]["chunk_count"] >= 2
+
+
+def test_reindex_does_not_duplicate_chunks(client):
+    """``process_document`` clears old vectors first; without that, every
+    re-index would add a second copy of every chunk and inflate retrieval."""
+    document_id = _upload(client).get_json()["document"]["id"]
+    _drain(client)
+    first = client.get("/api/documents").get_json()["documents"][0]["chunk_count"]
+
+    client.post(f"/api/documents/{document_id}/reindex")
+    _drain(client)
+    second = client.get("/api/documents").get_json()["documents"][0]["chunk_count"]
+    assert second == first
 
 
 def test_delete_document_purges_everything(client):
     document_id = _upload(client).get_json()["document"]["id"]
+    _drain(client)
     assert client.delete(f"/api/documents/{document_id}").status_code == 200
     assert client.get("/api/documents").get_json()["documents"] == []
     search = client.get("/api/documents/search",
@@ -132,3 +203,25 @@ def test_missing_file_field_rejected(client):
     response = client.post("/api/documents", data={},
                            content_type="multipart/form-data")
     assert response.status_code == 400
+
+
+def test_seeding_from_disk_stays_synchronous(app, user, tmp_path):
+    """``RAGService.ingest_path`` is the seeding CLI's entry point and must block.
+
+    A one-shot script has to know whether it worked before it exits, so this path
+    deliberately did *not* move to the queue. It is covered here because it is now
+    the only caller of ``ingest_pdf``, whose internals changed when ingestion was
+    split into register/process — a break here would surface as a seed script
+    that silently indexes nothing.
+    """
+    from nutrimind.services.rag_service import get_rag_service
+
+    source = tmp_path / "seed.pdf"
+    source.write_bytes(_build_pdf([PAGE_ONE, PAGE_TWO]))
+
+    with app.app_context():
+        document = get_rag_service(app.config["NUTRIMIND_SETTINGS"]).ingest_path(
+            source, user["id"])
+        assert document.status == "indexed", "seeding must complete before it returns"
+        assert document.pages == 2
+        assert document.chunk_count >= 2

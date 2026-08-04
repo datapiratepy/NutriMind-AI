@@ -15,7 +15,20 @@
     failed: ["nm-badge-red", "bi-x-circle", "failed"],
   };
 
+  /* One polling timer, not one per call. Before ingestion became asynchronous
+     this never mattered: the upload response already said "indexed", so no
+     document was ever in a non-terminal state and the timer below never armed.
+     Now it does, and every manual Refresh during indexing would start a second
+     chain that never stops — the timers multiply and the page hammers the API. */
+  let pollTimer = null;
+
+  function schedulePoll() {
+    if (pollTimer) clearTimeout(pollTimer);
+    pollTimer = setTimeout(refresh, 2500);
+  }
+
   async function refresh() {
+    if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
     try {
       const { documents } = await NM.api("/api/documents");
       if (!documents.length) {
@@ -52,7 +65,7 @@
           </td></tr>`;
       }).join("");
       if (documents.some((d) => ["processing", "pending"].includes(d.status)))
-        setTimeout(refresh, 2500);
+        schedulePoll();
     } catch (error) {
       rows.innerHTML = `<tr><td colspan="6" class="text-2 p-3">${NM.esc(error.message)}</td></tr>`;
     }
@@ -71,8 +84,11 @@
       const response = await NM.fetch("/api/documents", { method: "POST", body: data });
       if (!response.ok) throw new Error(await NM.readError(response));
       const body = await response.json();
-      NM.toast(`Indexed "${body.document.filename}" — ${body.document.chunk_count} chunks`,
-               "success");
+      /* 202, not 201: the server has accepted and queued the file, it has not
+         indexed it. Claiming "Indexed — N chunks" here would be a lie the table
+         underneath immediately contradicts, so say what actually happened and
+         let the polling in refresh() report the outcome. */
+      NM.toast(`Queued "${body.document.filename}" for indexing`, "success");
     } catch (error) {
       NM.toast(error.message || "Upload failed", "error");
     } finally {
@@ -103,7 +119,7 @@
       try {
         await NM.api(`/api/documents/${reindexBtn.dataset.reindex}/reindex`,
                      { method: "POST" });
-        NM.toast("Re-indexed", "success");
+        NM.toast("Re-indexing queued", "success");
       } catch (error) { NM.toast(error.message, "error"); }
       refresh();
     } else if (deleteBtn) {

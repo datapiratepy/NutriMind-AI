@@ -126,7 +126,13 @@ Educational framing, never diagnosis or medication advice; red-flag symptoms →
 
 ### 4.1 Ingestion (upload → searchable)
 
-`POST /api/documents` → validate (PDF only, ≤ 15 MB, MIME + extension check, `secure_filename` + UUID storage name, SHA-256 dedup) → extract text per page (`pypdf`) → clean (headers/footers, whitespace) → chunk (recursive, paragraph-aware, ~800 chars, 120 overlap) → embed → upsert into ChromaDB with metadata `{document_id, filename, page, chunk_index, condition_tags}` → mark document `indexed`. Failures mark the document `failed` with a stored error; the UI polls status.
+Ingestion is split across the request boundary, because the two halves cost very different amounts.
+
+**Synchronously, in the request:** validate (PDF only, ≤ 15 MB, MIME + extension check, `secure_filename` + UUID storage name, SHA-256 dedup) → create the `documents` row as `pending` → **`202 Accepted`**. Everything decidable while the uploader waits is decided here, so a duplicate or a non-PDF is a 400 they can act on.
+
+**Asynchronously, on a bounded in-process thread pool** (`nutrimind/services/jobs.py`): extract text per page (`pypdf`) → clean (headers/footers, whitespace) → chunk (recursive, paragraph-aware, ~800 chars, 120 overlap) → embed → upsert into ChromaDB with metadata `{document_id, filename, page, chunk_index, condition_tags}` → mark `indexed`. Failures that require reading the file (corrupt, encrypted, scanned) mark the document `failed` with a stored error. The UI polls `GET /api/documents` until the state is terminal.
+
+Measured, which is why: a 400-page PDF takes 12.0s on the lexical provider, and is 125 sequential watsonx round-trips on the credentialed one — too long to hold a request open behind a proxy. A document left mid-flight by a process that stopped is failed at the next startup, so no document can remain non-terminal (see `nutrimind/services/runtime.py`).
 
 Seed documents in `knowledge_base/` are indexed on first startup so RAG works out of the box.
 

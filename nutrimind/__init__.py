@@ -90,10 +90,31 @@ def create_app(settings: Settings | None = None) -> Flask:
     init_request_middleware(app)
     _register_blueprints(app)
     _register_error_handlers(app)
+    _init_runtime(app, settings)
 
     logger.info("NutriMind AI v%s started — requested mode '%s' (effective '%s')",
                 __version__, settings.app_mode, resolve_app_mode(settings))
     return app
+
+
+def _init_runtime(app: Flask, settings: Settings) -> None:
+    """Start the background job pool and settle ownership of the vector store.
+
+    The two are related. ``claim_runtime`` takes an advisory lock on the Chroma
+    directory; holding it means this process is the only one using that store,
+    which is both the supported deployment shape (see
+    ``nutrimind/services/runtime.py`` for the measurements) and the precondition
+    for recovering interrupted work: rows left ``pending`` or ``processing``
+    can only be safely failed if no other live process might still be working on
+    them.
+    """
+    from nutrimind.services.jobs import init_jobs
+    from nutrimind.services.runtime import claim_runtime, recover_interrupted_ingestions
+
+    init_jobs(app, max_workers=settings.ingest_workers,
+              queue_limit=settings.ingest_queue_limit)
+    if claim_runtime(settings):
+        recover_interrupted_ingestions(app)
 
 
 #: Absolute location of the Alembic scripts, resolved from the package rather

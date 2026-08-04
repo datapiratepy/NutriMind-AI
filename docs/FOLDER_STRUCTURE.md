@@ -54,6 +54,8 @@ nutrimind-ai/                        # repo root
 │   │   │   ├── demo_client.py       # zero-credential deterministic mode
 │   │   │   └── __init__.py          # factory: live vs demo by config
 │   │   ├── rag_service.py           # retrieval → grounded prompt → citations
+│   │   ├── jobs.py                  # bounded in-process pool: indexing off the request
+│   │   ├── runtime.py               # single-process guard + interrupted-ingest recovery
 │   │   ├── nutrition_service.py     # Mifflin-St Jeor targets + food-table lookup
 │   │   ├── bmi_service.py           # BMI, category, ideal range
 │   │   ├── health_score_service.py  # explainable 0–100 score

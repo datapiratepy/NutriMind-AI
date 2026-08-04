@@ -194,6 +194,10 @@ class Settings:
     #: reverse proxies in front of the app whose X-Forwarded-* may be trusted
     trusted_proxy_hops: int
     max_upload_mb: int
+    #: background threads available for document indexing
+    ingest_workers: int
+    #: how many documents may be queued for indexing before uploads are refused
+    ingest_queue_limit: int
     log_level: str
     database_uri: str
     base_dir: Path
@@ -251,6 +255,17 @@ def load_settings(dotenv_path: Path | None = None, *, ensure_dirs: bool = True) 
         # lets any client claim any address, so this must be opted into.
         trusted_proxy_hops=_env_int("TRUSTED_PROXY_HOPS", 0),
         max_upload_mb=_env_int("MAX_UPLOAD_MB", 15),
+        # 2, not 1 and not 8. Above 1 so one large document cannot block every
+        # other user's upload behind it; low overall because extraction and
+        # lexical embedding are pure Python and hold the GIL, so extra ingest
+        # threads compete with the threads serving requests rather than adding
+        # throughput. Raise it when embedding goes to watsonx, where the work is
+        # network I/O and releases the GIL.
+        ingest_workers=_env_int("INGEST_WORKERS", 2),
+        # A backlog bound. ThreadPoolExecutor's own queue is unbounded, so
+        # without this a burst of uploads becomes unbounded memory and a queue
+        # that takes hours to drain. Refusing loudly beats accepting silently.
+        ingest_queue_limit=_env_int("INGEST_QUEUE_LIMIT", 32),
         log_level=_env("LOG_LEVEL", "INFO").upper(),
         database_uri=_env(
             "DATABASE_URI", f"sqlite:///{(instance_dir / 'nutrimind.db').as_posix()}"
@@ -332,6 +347,16 @@ def validate_settings(settings: Settings) -> tuple[list[str], list[str]]:
 
     if not (1 <= settings.max_upload_mb <= 100):
         errors.append(f"MAX_UPLOAD_MB must be 1-100, got {settings.max_upload_mb}.")
+
+    # Upper bounds are deliberate. Ingestion threads share a GIL with the threads
+    # answering requests, so a large number does not buy throughput — it buys
+    # slower page loads while a document indexes.
+    if not (1 <= settings.ingest_workers <= 8):
+        errors.append(f"INGEST_WORKERS must be 1-8, got {settings.ingest_workers}.")
+
+    if not (1 <= settings.ingest_queue_limit <= 500):
+        errors.append("INGEST_QUEUE_LIMIT must be 1-500, got "
+                      f"{settings.ingest_queue_limit}.")
 
     rag = settings.rag
     if not (100 <= rag.chunk_size <= 4000):

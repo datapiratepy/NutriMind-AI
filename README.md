@@ -42,9 +42,11 @@ that ran.
 
 **RAG with honest grounding** — upload nutrition PDFs; they are chunked
 (page-bounded, overlapping: 800 chars with 120-char overlap), embedded, and indexed
-in ChromaDB (cosine, top-k 5). Answers above the provider's similarity
-threshold cite sources by filename and page; anything else is visibly labeled
-*general knowledge*. No invented evidence, ever.
+in ChromaDB (cosine, top-k 5). Indexing runs in the background — the upload
+returns immediately and the page reports progress — because a 400-page document
+takes 12s on the built-in provider and far longer against watsonx. Answers above
+the provider's similarity threshold cite sources by filename and page; anything
+else is visibly labeled *general knowledge*. No invented evidence, ever.
 
 **Deterministic nutrition engine** — Mifflin-St Jeor BMR/TDEE, macro targets,
 an 85-food curated composition table (Indian + international, Hindi aliases,

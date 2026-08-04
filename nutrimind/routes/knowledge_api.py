@@ -4,14 +4,25 @@ Endpoints
     GET    /api/documents                  -> registry with status + chunk counts
     POST   /api/documents                  -> multipart upload (field "file",
                                               optional "condition_tags" CSV);
-                                              synchronous indexing; 201 on success
+                                              **202** with status 'pending' —
+                                              indexing runs in the background
     GET    /api/documents/search?q=&k=     -> retrieval preview: chunks,
                                               similarities, citations, grounded flag
-    POST   /api/documents/<id>/reindex     -> re-run the pipeline for one document
+    POST   /api/documents/<id>/reindex     -> **202**; re-runs the pipeline in
+                                              the background
     DELETE /api/documents/<id>             -> remove vectors + row (+ uploaded file)
 
-Failures during processing keep the Document row with status='failed' and the
-error message, so the knowledge page can display what went wrong.
+Upload answers 202, not 201, because the response no longer means "indexed" —
+it means "accepted and queued". Indexing a 400-page PDF measures at 12s on the
+lexical provider and is 125 sequential watsonx round-trips on the credentialed
+one, which is far too long to hold a request open behind a reverse proxy. Clients
+poll ``GET /api/documents`` for the outcome.
+
+Errors that are knowable immediately (not a PDF, wrong content type, duplicate
+content) are still returned synchronously as 400. Errors that can only be found
+by reading the file (corrupt, encrypted, scanned, no extractable text) now
+surface as ``status='failed'`` with the message on the row, because by then the
+uploader's request has already been answered.
 """
 
 from __future__ import annotations
@@ -82,9 +93,9 @@ def upload_document():
     tags_raw = request.form.get("condition_tags", "")
     tags = [sanitize_text(t, max_chars=40, field="condition_tag")
             for t in tags_raw.split(",") if t.strip()]
-    document = _service().ingest_upload(file, current_user_id(),
-                                        condition_tags=tags)
-    return ok({"document": document.to_dict()}, 201)
+    document = _service().queue_upload(file, current_user_id(),
+                                       condition_tags=tags)
+    return ok({"document": document.to_dict()}, 202)
 
 
 @knowledge_api.get("/documents/search")
@@ -102,7 +113,7 @@ def search_documents():
 def reindex(document_id: int):
     document = _get_document_or_400(document_id)
     document = _service().reindex(document)
-    return ok({"document": document.to_dict()})
+    return ok({"document": document.to_dict()}, 202)
 
 
 @knowledge_api.delete("/documents/<int:document_id>")

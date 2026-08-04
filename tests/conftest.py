@@ -108,11 +108,24 @@ def app(monkeypatch, tmp_path):
         _db.create_all()
 
     yield application
+
+    # Stop the background pool before tearing the database down. Each app builds
+    # its own runner, so without this every test leaks its worker threads — 5
+    # apps measured 5 surviving threads, and the suite creates hundreds. Shutting
+    # down first also means no job can be mid-query when drop_all() runs.
+    from nutrimind.services.jobs import EXTENSION_KEY
+    from nutrimind.services.runtime import release_runtime
+
+    runner = application.extensions.get(EXTENSION_KEY)
+    if runner is not None:
+        runner.shutdown(wait=True)
+
     with application.app_context():
         _db.session.remove()
         _db.drop_all()
         _db.engine.dispose()  # return pooled SQLite connections instead of leaking them
     _release_chroma_clients()
+    release_runtime()  # drop the Chroma directory lock and its open file handle
 
 
 _CSRF_META = re.compile(r'name="csrf-token" content="([^"]+)"')
