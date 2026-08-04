@@ -15,7 +15,7 @@ jobs:
     name: lint · tests · audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Must match the version developers use locally and the deployment image.
       # The supported range is 3.11-3.14, set by ibm-watsonx-ai's Requires-Python;
@@ -79,7 +79,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:
@@ -115,7 +115,7 @@ jobs:
     name: image build · migrations · schema
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Build the production image
         run: docker build -t nutrimind:ci .
