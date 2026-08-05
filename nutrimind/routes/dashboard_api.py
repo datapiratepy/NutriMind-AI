@@ -16,10 +16,10 @@ from flask_login import login_required
 
 from nutrimind.extensions import db
 from nutrimind.models import BMIRecord, ChatMessage, MealLog, UserProfile, WaterLog
-from nutrimind.routes import current_user_id, ok
+from nutrimind.routes import current_user_id, current_user_today, ok
 from nutrimind.services.health_score_service import compute_health_score
 from nutrimind.services.nutrition_service import targets_for_profile
-from nutrimind.utils.time import utcnow, utctoday
+from nutrimind.utils.time import utcnow
 
 dashboard_api = Blueprint("dashboard_api", __name__, url_prefix="/api")
 
@@ -42,7 +42,7 @@ def summary():
     profile = UserProfile.for_user(user_id)
     # UTC date: all timestamps (MealLog.ts, WaterLog.date) are stored in UTC,
     # so "today" must be the UTC day or buckets misalign around midnight.
-    today = utctoday()
+    today = current_user_today()
     meals = MealLog.since(_WINDOW_DAYS, user_id)
     water_rows = list(db.session.execute(
         db.select(WaterLog).where(

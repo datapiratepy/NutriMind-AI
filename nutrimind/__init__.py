@@ -21,6 +21,7 @@ from werkzeug.exceptions import HTTPException
 from nutrimind.config import Settings, load_settings, resolve_app_mode, validate_settings
 from nutrimind.exceptions import ConfigurationError, NutriMindError
 from nutrimind.extensions import csrf, db, login_manager, migrate
+from nutrimind.security import init_security_headers
 from nutrimind.utils.decorators import configure_proxy_awareness, init_request_middleware
 from nutrimind.utils.logging_config import configure_logging
 
@@ -105,6 +106,7 @@ def create_app(settings: Settings | None = None) -> Flask:
 
     configure_proxy_awareness(app, settings.trusted_proxy_hops)
     init_request_middleware(app)
+    init_security_headers(app)
     _register_blueprints(app)
     _register_error_handlers(app)
     _init_runtime(app, settings)

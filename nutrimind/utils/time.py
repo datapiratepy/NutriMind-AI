@@ -53,3 +53,39 @@ def utctoday() -> dt.date:
     finding M3 and needs a timezone on the user profile to do correctly.
     """
     return utcnow().date()
+
+
+#: Fallback when a profile has no timezone set, or names one this interpreter
+#: does not know. UTC keeps the previous behaviour rather than guessing.
+DEFAULT_TIMEZONE = "UTC"
+
+
+def resolve_zone(name: str | None):
+    """An IANA zone object for ``name``, or UTC if it is missing or unknown.
+
+    Never raises. A bad zone string is a data problem, and a dashboard that
+    500s because someone's profile says ``"Mars/Olympus"`` is worse than one
+    that quietly shows UTC.
+    """
+    import datetime as _dt
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+    if not name:
+        return _dt.timezone.utc
+    try:
+        return ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError, KeyError):
+        return _dt.timezone.utc
+
+
+def local_today(zone_name: str | None) -> "dt.date":
+    """The calendar date it currently is for someone in ``zone_name``.
+
+    This is the whole timezone fix. Timestamps stay naive UTC in the database;
+    only the question "which day is that?" becomes local. ``utcnow()`` is
+    naive by convention, so it is attached to UTC before being converted —
+    without that step the conversion silently treats it as local time and the
+    bug moves rather than disappearing.
+    """
+    return utcnow().replace(tzinfo=dt.timezone.utc).astimezone(
+        resolve_zone(zone_name)).date()

@@ -19,10 +19,9 @@ from flask_login import login_required
 from nutrimind.exceptions import ValidationError
 from nutrimind.extensions import db
 from nutrimind.models import BMIRecord, UserProfile, WaterLog
-from nutrimind.routes import current_user_id, ok
+from nutrimind.routes import current_user_id, current_user_today, ok, page_params, paged
 from nutrimind.services import bmi_service
 from nutrimind.services.nutrition_service import targets_for_profile
-from nutrimind.utils.time import utctoday
 from nutrimind.utils.validators import (
     WATER_GLASSES_RANGE,
     validate_profile_payload,
@@ -111,24 +110,33 @@ def compute_bmi():
 
 @profile_api.get("/bmi/history")
 def bmi_history():
-    rows = db.session.execute(
-        db.select(BMIRecord).where(BMIRecord.user_id == current_user_id())
-        .order_by(BMIRecord.ts.desc()).limit(50)
-    ).scalars()
-    return ok({"records": [r.to_dict() for r in rows]})
+    limit, offset = page_params()
+    where = BMIRecord.user_id == current_user_id()
+    total = db.session.scalar(
+        db.select(db.func.count()).select_from(BMIRecord).where(where))
+    rows = list(db.session.execute(
+        db.select(BMIRecord).where(where)
+        .order_by(BMIRecord.ts.desc()).limit(limit).offset(offset)
+    ).scalars())
+    return ok({"records": [r.to_dict() for r in rows],
+               "page": paged(rows, total, limit, offset)})
 
 
 @profile_api.post("/water")
 def log_water():
     data = request.get_json(silent=True) or {}
     delta = int(validate_range(data.get("glasses", 1), "glasses", -5, WATER_GLASSES_RANGE[1]))
-    row = WaterLog.add_glasses(delta, current_user_id())
+    # The day must come from the caller, not the model default: the read
+    # below uses the user's local day, and a write that silently used the
+    # UTC one would put the entry on a different row than the read finds.
+    row = WaterLog.add_glasses(delta, current_user_id(),
+                               on_date=current_user_today())
     db.session.commit()
     return ok({"water": row.to_dict()})
 
 
 @profile_api.get("/water/today")
 def water_today():
-    row = WaterLog.for_day(utctoday(), current_user_id())
+    row = WaterLog.for_day(current_user_today(), current_user_id())
     return ok({"water": row.to_dict() if row else {
-        "date": utctoday().isoformat(), "glasses": 0}})
+        "date": current_user_today().isoformat(), "glasses": 0}})

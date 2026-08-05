@@ -46,7 +46,10 @@ def test_food_search_endpoint(client):
 
 
 def test_meal_plans_list_empty(client):
-    assert client.get("/api/meal-plans").get_json() == {"plans": []}
+    """The list is now paged, so the envelope carries the page metadata too."""
+    body = client.get("/api/meal-plans").get_json()
+    assert body["plans"] == []
+    assert body["page"] == {"total": 0, "limit": 50, "offset": 0, "has_more": False}
 
 
 def test_meal_plan_detail_and_export_stub(client, sample_profile):

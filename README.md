@@ -258,6 +258,8 @@ JS (no build step) · pytest
 | [INSTALLATION.md](docs/INSTALLATION.md) | Local setup |
 | [IBM_SETUP.md](docs/IBM_SETUP.md) | Zero-to-connected IBM walkthrough |
 | [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Why the deployment is shaped the way it is |
+| [SECURITY.md](SECURITY.md) | What is protected, what is not, how to report |
+| [PRIVACY.md](PRIVACY.md) | What is collected, where it goes, how to delete it |
 | [RUNBOOK.md](docs/RUNBOOK.md) | Deploy, upgrade, roll back, back up, restore, troubleshoot |
 | [IMPLEMENTATION_NOTES.md](docs/IMPLEMENTATION_NOTES.md) | Decisions and trade-offs made during the build |
 | [MANUAL_TESTING.md](docs/MANUAL_TESTING.md) | Step-by-step verification guide |

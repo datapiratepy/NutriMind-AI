@@ -121,6 +121,45 @@ def test_the_document_table_polls_while_work_is_outstanding():
     assert "setTimeout(refresh" in source, "the refresh poll is gone"
 
 
+def test_no_test_reads_a_repo_file_with_the_platform_encoding():
+    """``read_text()`` with no encoding is a Windows-only failure waiting to happen.
+
+    ``Path.read_text()`` and ``open()`` default to the *platform* encoding: UTF-8
+    on Linux, cp1252 on Windows. A test that reads a repository file without
+    saying ``encoding="utf-8"`` therefore passes in CI and crashes on a
+    developer's machine — which is exactly what happened:
+
+        UnicodeDecodeError: 'charmap' codec can't decode byte 0x90
+
+    The byte is the third of ``\\xe2\\x86\\x90`` — the ``←`` in
+    ``templates/errors/404.html``. Only five byte values are undefined in
+    cp1252 (0x81, 0x8D, 0x8F, 0x90, 0x9D), so most non-ASCII text decodes to
+    *mojibake* rather than raising; this one happens to raise, which is the
+    luckier outcome.
+
+    Checked across the whole test suite rather than fixed once, because the next
+    person to read a template will reach for the same convenient default.
+    """
+    tests_dir = Path(__file__).resolve().parent.parent
+    pattern = re.compile(r"\.(?:read_text|write_text)\(\s*\)|"
+                         r"\.(?:read_text|write_text)\((?![^)]*encoding=)[^)]+\)")
+    # Docstrings are stripped first, or this test flags the prose in its own
+    # docstring explaining the rule — which is how a guard becomes noise nobody
+    # trusts. Blanked rather than deleted so line numbers stay meaningful.
+    docstrings = re.compile(r'("""|\'\'\')(?:.|\n)*?\1')
+
+    offenders = []
+    for path in sorted(tests_dir.rglob("test_*.py")):
+        source = path.read_text(encoding="utf-8")
+        source = docstrings.sub(lambda m: "\n" * m.group(0).count("\n"), source)
+        for number, line in enumerate(source.splitlines(), start=1):
+            if pattern.search(line):
+                offenders.append(f"{path.name}:{number}")
+    assert not offenders, (
+        "read_text()/write_text() without encoding=\"utf-8\" — these fail on "
+        f"Windows where the default is cp1252: {offenders}")
+
+
 def test_polling_uses_a_single_timer():
     """Every manual Refresh during indexing would otherwise start another chain.
 

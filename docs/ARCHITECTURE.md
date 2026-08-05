@@ -23,7 +23,7 @@ Core capabilities: personalized meal planning, nutrition Q&A with citations, fre
 1. **LLM for language, Python for math.** Calorie targets, BMR, BMI, macro totals, and health scores are computed deterministically. Granite writes plans, explanations and assessments *around* verified numbers — never invents them.
 2. **Grounded before generative.** Knowledge and health agents retrieve from the vector store first; answers cite sources (document + page). When retrieval confidence is below threshold, the answer is explicitly labeled as general knowledge.
 3. **Provider-agnostic AI boundary.** All LLM/embedding access goes through one interface with two implementations: `WatsonxClient` (live) and `DemoClient` (deterministic). The app runs end-to-end with zero credentials — critical for evaluation, testing, and demo resilience.
-4. **Token-budget aware.** IBM Cloud Lite allows ~300,000 inference tokens/month. Routing uses cheap rules before an LLM call, embeddings are cached by content hash, and every agent has a `max_new_tokens` cap. Token usage is logged per request.
+4. **Token-budget aware.** IBM Cloud Lite allows ~300,000 inference tokens/month. Routing uses cheap rules before an LLM call, embeddings are cached by content hash, and every agent has a `max_new_tokens` cap. Token usage is **estimated** per request (`len(text) // 4`) and labelled `estimated: true` in the response metadata. It is not measured: the streaming API returns tokens, not usage counts, so a real total is not available for the responses that matter. Do not treat these figures as a billing record.
 5. **Clean layering.** Presentation → API → Agents → Services → Retrieval/Data. Dependencies point downward only; no layer skips.
 
 ---
@@ -218,7 +218,7 @@ FLASK_SECRET_KEY=...          MAX_UPLOAD_MB=15
 
 ### Resilience
 
-Retry with exponential backoff on 429/5xx (bounded), request timeouts, typed exceptions (`WatsonxAuthError`, `WatsonxQuotaError`), and a clear UI state ("AI temporarily unavailable") instead of stack traces. After repeated failures the app suggests switching to demo mode. Token usage per call is recorded to `chat_messages.tokens_used`.
+Retry with exponential backoff on 429/5xx (bounded), request timeouts, typed exceptions (`WatsonxAuthError`, `WatsonxQuotaError`), and a clear UI state ("AI temporarily unavailable") instead of stack traces. After repeated failures the app suggests switching to demo mode. An estimated token count per call is recorded to `chat_messages.tokens_used` (see principle 4 — it is an estimate, not a measurement).
 
 ### Demo mode
 

@@ -38,40 +38,102 @@ _lock = threading.Lock()
 _service: "RAGService | None" = None
 
 
-#: A PDF must begin with "%PDF-" followed by a version. The specification allows
-#: leading junk before the header, and some real files have it, so the marker is
-#: searched for within a small prefix rather than required at byte zero.
+#: A PDF must begin with "%PDF-". The specification tolerates a little junk
+#: before it and some real files have it, so a short prefix is searched rather
+#: than requiring offset zero — but only a short one. 1024 bytes was too
+#: generous: it let any file carrying "%PDF-" anywhere in its first kilobyte
+#: through, which is a nine-byte bypass.
 _PDF_MAGIC = b"%PDF-"
-_MAGIC_SEARCH_BYTES = 1024
+_MAGIC_SEARCH_BYTES = 32
+
+#: The trailer marker every conforming PDF ends with. Searched in the tail
+#: because writers append varying amounts of whitespace after it.
+_PDF_EOF = b"%%EOF"
+_EOF_SEARCH_BYTES = 4096
 
 
 def _require_pdf_bytes(path: Path) -> None:
     """Reject a file whose *contents* are not a PDF, whatever it is named.
 
-    Before this, validation was ``filename.endswith(".pdf")`` plus the
-    ``Content-Type`` header — both supplied by the caller. Measured against the
-    running API, an ELF binary, an HTML page containing a script tag and a ZIP
-    header were all accepted with HTTP 202, written into ``instance/uploads``,
-    and left there when pypdf later failed to parse them.
+    Three checks, cheapest first, because this runs inside the request:
 
-    Checking the magic number is not a security boundary on its own — a real PDF
-    can still be malicious, and pypdf remains the thing that actually parses it.
-    What it does is keep arbitrary bytes off the disk and turn a confusing
-    asynchronous "failed" row into an immediate, accurate 400.
+    1. ``%PDF-`` near the start;
+    2. ``%%EOF`` near the end;
+    3. the file parses as a PDF with at least one page.
 
-    :raises ValidationError: the file is not a PDF.
+    Check 3 is what makes the difference. The previous version did only a
+    loosened form of check 1 — ``%PDF-`` anywhere in the first 1024 bytes — and
+    was defeated by prepending nine bytes. Measured against the running API:
+
+        HTML with "%PDF-" in a comment  -> HTTP 202, 3,048 bytes stored
+        ELF header + "%PDF-" at byte 8  -> HTTP 202, 6,064 bytes stored
+        "%PDF-" then 2 MB of junk       -> HTTP 202, 2,103,225 bytes stored
+
+    all of which then failed to parse and left their bytes on disk forever.
+
+    Structural parsing is done with pypdf's own reader and is deliberately
+    *shallow*: the header, the trailer and the page count. Full text extraction
+    stays on the background thread, because it is the expensive part and this
+    has to be fast enough to run while the uploader waits.
+
+    This is not a guarantee that the file is safe — a genuine PDF can still be
+    malicious, and pypdf remains what parses it properly. It is a guarantee that
+    the bytes are a PDF, which is what keeps arbitrary content off the disk.
+
+    :raises ValidationError: the file is not a usable PDF.
     """
+    generic = ValidationError(
+        "That file is not a readable PDF.",
+        hint="The name ends in .pdf but the contents are not a PDF document. "
+             "Export or re-save it as a real PDF and try again.")
     try:
+        size = path.stat().st_size
         with path.open("rb") as handle:
             prefix = handle.read(_MAGIC_SEARCH_BYTES)
+            handle.seek(max(0, size - _EOF_SEARCH_BYTES))
+            tail = handle.read()
     except OSError as exc:  # pragma: no cover — unreadable temp file
         raise ValidationError("The uploaded file could not be read.") from exc
 
-    if _PDF_MAGIC not in prefix:
-        raise ValidationError(
-            "That file is not a PDF.",
-            hint="The name ends in .pdf but the contents are something else. "
-                 "Export or re-save the document as a real PDF.")
+    if _PDF_MAGIC not in prefix or _PDF_EOF not in tail:
+        raise generic
+
+    try:
+        from pypdf import PdfReader
+
+        reader = PdfReader(str(path))
+        if reader.is_encrypted:
+            raise ValidationError(
+                "That PDF is password-protected.",
+                hint="Remove the password and upload it again.")
+        if len(reader.pages) < 1:
+            raise generic
+    except ValidationError:
+        raise
+    except Exception as exc:  # noqa: BLE001 — pypdf raises many types
+        raise generic from exc
+
+
+def user_storage_bytes(user_id: int, settings: Settings) -> int:
+    """Total bytes this account currently occupies under ``instance/uploads``.
+
+    Computed from the files a user's rows point at rather than stored on the
+    account. A stored counter is a second source of truth that drifts the first
+    time a delete fails part-way, and the number of documents per account is
+    small enough that stat-ing them is cheaper than keeping a counter honest.
+    """
+    total = 0
+    rows = db.session.execute(
+        db.select(Document).where(Document.user_id == user_id)).scalars()
+    for document in rows:
+        if not document.stored_name.startswith("instance/uploads/"):
+            continue  # seeded files are shared repo content, not user storage
+        path = resolve_document_path(document, settings)
+        try:
+            total += path.stat().st_size
+        except OSError:
+            continue  # already gone — not this account's problem
+    return total
 
 
 class RAGService:
@@ -122,6 +184,7 @@ class RAGService:
         # or a caller can fill the disk with rejected uploads.
         try:
             _require_pdf_bytes(target)
+            self._require_storage_headroom(user_id, target.stat().st_size)
             document = register_document(
                 target, original_filename=original, stored_name=stored,
                 user_id=user_id, condition_tags=condition_tags)
@@ -130,6 +193,26 @@ class RAGService:
             raise
         self.queue_processing(document)
         return document
+
+    def _require_storage_headroom(self, user_id: int, incoming: int) -> None:
+        """Refuse an upload that would take the account past its quota.
+
+        ``MAX_UPLOAD_MB`` bounds one request and the rate limit bounds their
+        frequency, but neither bounds the total. Without a quota an account can
+        accumulate indefinitely — measured at roughly 21 GB per day within the
+        existing limits — and a full volume takes the database and the vector
+        store down with it.
+
+        Per account rather than global, so one user cannot deny service to
+        everyone else by filling the disk first.
+        """
+        limit = self._settings.max_user_storage_mb * 1024 * 1024
+        used = user_storage_bytes(user_id, self._settings)
+        if used + incoming > limit:
+            raise ValidationError(
+                f"That upload would exceed your {self._settings.max_user_storage_mb} MB "
+                f"storage limit ({used / 1024 / 1024:.1f} MB currently used).",
+                hint="Delete a document you no longer need and try again.")
 
     def queue_processing(self, document: Document) -> Document:
         """Hand one registered document to the background pool.

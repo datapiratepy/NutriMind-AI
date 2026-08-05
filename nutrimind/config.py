@@ -194,6 +194,8 @@ class Settings:
     #: reverse proxies in front of the app whose X-Forwarded-* may be trusted
     trusted_proxy_hops: int
     max_upload_mb: int
+    #: total bytes one account may occupy with uploaded documents
+    max_user_storage_mb: int
     #: background threads available for document indexing
     ingest_workers: int
     #: how many documents may be queued for indexing before uploads are refused
@@ -255,6 +257,13 @@ def load_settings(dotenv_path: Path | None = None, *, ensure_dirs: bool = True) 
         # lets any client claim any address, so this must be opted into.
         trusted_proxy_hops=_env_int("TRUSTED_PROXY_HOPS", 0),
         max_upload_mb=_env_int("MAX_UPLOAD_MB", 15),
+        # A ceiling on the total, not just on one request. MAX_UPLOAD_MB bounds
+        # a single upload and the rate limit bounds their frequency; neither
+        # bounds accumulation, which measured at roughly 21 GB/day per account
+        # before this existed. 100 MB is several hundred pages of guidelines —
+        # generous for the use case and small enough that no one account can
+        # fill a modest volume.
+        max_user_storage_mb=_env_int("MAX_USER_STORAGE_MB", 100),
         # 2, not 1 and not 8. Above 1 so one large document cannot block every
         # other user's upload behind it; low overall because extraction and
         # lexical embedding are pure Python and hold the GIL, so extra ingest
@@ -347,6 +356,12 @@ def validate_settings(settings: Settings) -> tuple[list[str], list[str]]:
 
     if not (1 <= settings.max_upload_mb <= 100):
         errors.append(f"MAX_UPLOAD_MB must be 1-100, got {settings.max_upload_mb}.")
+
+    if not (settings.max_upload_mb <= settings.max_user_storage_mb <= 10_000):
+        errors.append(
+            "MAX_USER_STORAGE_MB must be between MAX_UPLOAD_MB and 10000, got "
+            f"{settings.max_user_storage_mb}. A quota below the single-upload "
+            "limit would reject every upload.")
 
     # Upper bounds are deliberate. Ingestion threads share a GIL with the threads
     # answering requests, so a large number does not buy throughput — it buys

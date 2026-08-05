@@ -132,7 +132,7 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce() }}">
 (async function () {
   const grid = document.getElementById("about-status");
   try {

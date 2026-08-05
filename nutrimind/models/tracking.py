@@ -63,7 +63,12 @@ class WaterLog(db.Model):
     def add_glasses(cls, amount: int, user_id: int, *,
                     on_date: dt.date | None = None) -> "WaterLog":
         """Upsert one user's row for a day, clamping the total to the valid range."""
-        day = on_date or utctoday()  # UTC day, matching MealLog.ts
+        # ``on_date`` is what request handlers pass — the *user's* local day.
+        # The UTC fallback exists only for callers with no user context (the
+        # seeding script, tests); a request that omits it would bucket by UTC
+        # while the read path buckets locally, so the two would disagree across
+        # the boundary. Routes must always pass it.
+        day = on_date or utctoday()
         row = db.session.execute(
             db.select(cls).where(cls.date == day, cls.user_id == user_id)
         ).scalar_one_or_none()

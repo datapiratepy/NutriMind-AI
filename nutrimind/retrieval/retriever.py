@@ -13,8 +13,14 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from nutrimind.retrieval.vector_store import RetrievedChunk, VectorStore
+from nutrimind.utils.redaction import summarize
 
 logger = logging.getLogger(__name__)
+
+#: Fence markers around retrieved passages. Deliberately unlikely to occur in a
+#: nutrition PDF, and neutralised in the passage text regardless.
+_FENCE_OPEN = "<<<PASSAGE"
+_FENCE_CLOSE = "PASSAGE>>>"
 
 
 @dataclass(frozen=True)
@@ -43,11 +49,37 @@ class RetrievalResult:
         return citations
 
     def context_text(self) -> str:
-        """Numbered passages block for grounded prompts."""
-        return "\n\n".join(
-            f"[{index}] (from {c.filename}, page {c.page})\n{c.text}"
-            for index, c in enumerate(self.chunks, start=1)
-        )
+        """Numbered passages block for grounded prompts, fenced as untrusted data.
+
+        Passage text comes from a PDF the user uploaded. Interpolating it into a
+        prompt with no boundary makes every document a place to write
+        instructions — and the system prompt makes that worse rather than
+        better, because it forbids *contradicting* the passages, which is
+        exactly what an injected instruction wants.
+
+        Two defences, neither sufficient alone:
+
+        * **Fencing.** Each passage sits between explicit markers, so the model
+          can tell where quoted material starts and stops rather than reading a
+          run-on block that begins with plausible-looking directives.
+        * **Neutralising the markers themselves.** A passage containing the
+          fence string could otherwise close its own fence and continue outside
+          it, which is the document equivalent of SQL injection closing a quote.
+          Any occurrence in the text is defanged before it is inserted.
+
+        This is mitigation, not a solution. A determined injection can still
+        influence a model that is told to trust its sources; what this removes
+        is the trivial case where the boundary does not exist at all. The
+        residual risk is documented in SECURITY.md rather than papered over.
+        """
+        blocks = []
+        for index, chunk in enumerate(self.chunks, start=1):
+            safe = chunk.text.replace(_FENCE_OPEN, "<passage>").replace(
+                _FENCE_CLOSE, "</passage>")
+            blocks.append(
+                f"{_FENCE_OPEN} {index} source=\"{chunk.filename}\" "
+                f"page=\"{chunk.page}\"\n{safe}\n{_FENCE_CLOSE}")
+        return "\n\n".join(blocks)
 
     def to_dict(self) -> dict:
         return {
@@ -92,8 +124,8 @@ class Retriever:
         # that would otherwise be presented as cited evidence.
         kept = [h for h in hits
                 if h.similarity >= self._threshold and provider.matches(query, h.text)]
-        logger.info("retrieve %r: %d hits, %d above threshold %.2f (best %.3f)",
-                    query[:60], len(hits), len(kept), self._threshold,
+        logger.info("retrieve %s: %d hits, %d above threshold %.2f (best %.3f)",
+                    summarize(query), len(hits), len(kept), self._threshold,
                     hits[0].similarity if hits else 0.0)
         return RetrievalResult(
             query=query,

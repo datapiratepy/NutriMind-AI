@@ -22,7 +22,7 @@ from flask_login import login_required
 from nutrimind.exceptions import ValidationError
 from nutrimind.extensions import db
 from nutrimind.models import MealLog, MealPlan
-from nutrimind.routes import current_user_id, ok
+from nutrimind.routes import current_user_id, ok, page_params, paged
 from nutrimind.services.nutrition_service import get_food_table
 from nutrimind.utils.validators import (
     sanitize_text,
@@ -111,11 +111,16 @@ def search_foods():
 
 @meals_api.get("/meal-plans")
 def list_meal_plans():
-    rows = db.session.execute(
-        db.select(MealPlan).where(MealPlan.user_id == current_user_id())
-        .order_by(MealPlan.created_at.desc()).limit(50)
-    ).scalars()
-    return ok({"plans": [p.to_dict(include_plan=False) for p in rows]})
+    limit, offset = page_params()
+    where = MealPlan.user_id == current_user_id()
+    total = db.session.scalar(
+        db.select(db.func.count()).select_from(MealPlan).where(where))
+    rows = list(db.session.execute(
+        db.select(MealPlan).where(where)
+        .order_by(MealPlan.created_at.desc()).limit(limit).offset(offset)
+    ).scalars())
+    return ok({"plans": [p.to_dict(include_plan=False) for p in rows],
+               "page": paged(rows, total, limit, offset)})
 
 
 @meals_api.get("/meal-plans/<int:plan_id>")

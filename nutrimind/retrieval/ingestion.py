@@ -190,11 +190,49 @@ def process_document(document: Document, *, settings: Settings,
                     document.filename, len(pages), len(chunks),
                     vector_store.provider.name)
         return document
-    except Exception as exc:  # noqa: BLE001 — record failure, then re-raise
+    except DocumentProcessingError as exc:
+        # Permanent: the file's *contents* are the problem — corrupt, encrypted,
+        # scanned, or producing no usable text. Re-running would fail
+        # identically, so the bytes are worth nothing and are removed.
+        #
+        # This is the disk-exhaustion fix. Validation rejects non-PDFs at the
+        # request, but anything that gets past it and then fails to parse used
+        # to keep its file forever, which made every parse failure a permanent
+        # storage cost an uploader could repeat at will.
         document.mark_failed(str(exc))
         db.session.commit()
-        logger.warning("ingestion failed for '%s': %s", document.filename, exc)
+        _discard_upload(document, settings)
+        logger.warning("ingestion failed permanently for document %d: %s",
+                       document.id, exc)
         raise
+    except Exception as exc:  # noqa: BLE001 — transient: keep the file
+        # Anything else — the embedding provider being unreachable, a full
+        # disk, the vector store erroring — is a condition that can clear. The
+        # file is the only copy of the user's document and Re-index is the
+        # documented recovery, so deleting it here would turn a temporary
+        # outage into permanent data loss.
+        document.mark_failed(str(exc))
+        db.session.commit()
+        logger.warning("ingestion failed transiently for document %d (%s: %s) "
+                       "— file kept for Re-index", document.id,
+                       type(exc).__name__, exc)
+        raise
+
+
+def _discard_upload(document: Document, settings: Settings) -> None:
+    """Delete a user-uploaded file whose contents can never be indexed.
+
+    Only uploads. Seeded documents under ``knowledge_base/`` are repository
+    content shared by every account, and one account's failed ingest must not
+    remove them.
+    """
+    if not document.stored_name.startswith("instance/uploads/"):
+        return
+    try:
+        resolve_document_path(document, settings).unlink(missing_ok=True)
+    except OSError as exc:  # pragma: no cover — best effort, never fatal
+        logger.warning("could not remove rejected upload for document %d: %s",
+                       document.id, exc)
 
 
 def ingest_pdf(

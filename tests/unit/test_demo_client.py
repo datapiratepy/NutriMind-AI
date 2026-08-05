@@ -22,12 +22,13 @@ from nutrimind.services.llm.demo_client import DemoClient, parse_passages
 #: Shaped exactly like RetrievalResult.context_text(), including the words that
 #: used to hijack the keyword table.
 PASSAGES = (
-    "[1] (from ThaiRecipes.pdf, page 4)\n"
+    '<<<PASSAGE 1 source="ThaiRecipes.pdf" page="4"\n'
     "Pad Thai Goong Sod: soak rice noodles, then stir fry with tamarind, "
     "palm sugar and fish sauce until the sauce coats every strand.\n\n"
-    "[2] (from ThaiRecipes.pdf, page 9)\n"
+    'PASSAGE>>>\n\n<<<PASSAGE 2 source="ThaiRecipes.pdf" page="9"\n'
     "Green curry: simmer coconut milk with curry paste, bamboo shoots and "
-    "thai basil. Serve with jasmine rice."
+    "thai basil. Serve with jasmine rice.\n"
+    "PASSAGE>>>"
 )
 
 KNOWLEDGE_PROMPT = (

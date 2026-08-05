@@ -40,6 +40,15 @@ class UserProfile(db.Model):
     medical_conditions: Mapped[list] = mapped_column(db.JSON, default=list)
     allergies: Mapped[list] = mapped_column(db.JSON, default=list)
     country: Mapped[Optional[str]] = mapped_column(db.String(60))
+    #: IANA zone name ("Asia/Kolkata"). Decides where the user's day starts.
+    #:
+    #: Storage stays naive UTC — see nutrimind/utils/time.py for why. This
+    #: column only affects *bucketing*: which calendar day a timestamp belongs
+    #: to. Before it existed, "today" was the UTC day, so a user in India saw
+    #: their dashboard reset at 05:30 and an evening meal logged after 17:30
+    #: local landed on tomorrow. For an app whose core loop is daily tracking,
+    #: the day boundary being wrong is a correctness bug, not a preference.
+    timezone: Mapped[Optional[str]] = mapped_column(db.String(64))
     food_preference: Mapped[str] = mapped_column(db.String(20))
     weight_goal: Mapped[str] = mapped_column(db.String(10), default="maintain")
     daily_calorie_goal: Mapped[Optional[int]]
@@ -82,6 +91,7 @@ class UserProfile(db.Model):
             "medical_conditions": self.medical_conditions or [],
             "allergies": self.allergies or [],
             "country": self.country,
+            "timezone": self.timezone,
             "food_preference": self.food_preference,
             "weight_goal": self.weight_goal,
             "daily_calorie_goal": self.daily_calorie_goal,

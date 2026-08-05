@@ -117,29 +117,24 @@ def test_non_pdf_rejected(client):
     assert response.status_code == 400
 
 
-def test_corrupt_pdf_fails_on_the_background_thread(client):
-    """A file this broken can only be discovered by reading it.
+def test_structurally_broken_pdf_is_rejected_at_the_request(client):
+    """This used to be accepted with 202 and fail later on the worker.
 
-    That now happens after the response, so the failure has to arrive on the row
-    rather than as an HTTP status. The upload itself is still accepted — which is
-    correct: nothing was wrong with the *request*.
+    Validation now parses the file rather than sniffing for ``%PDF-``, so a
+    header with no valid structure behind it is caught while the uploader is
+    still waiting — a specific 400 instead of a mysterious 'failed' row.
     """
     response = client.post("/api/documents", data={
         "file": (io.BytesIO(b"%PDF-1.4 garbage without structure"), "broken.pdf"),
     }, content_type="multipart/form-data")
-    assert response.status_code == 202
-    _drain(client)
-
-    listed = client.get("/api/documents").get_json()["documents"]
-    assert listed[0]["status"] == "failed"
-    assert listed[0]["error"]
+    assert response.status_code == 400
+    assert "not a readable PDF" in response.get_json()["error"]["message"]
+    assert client.get("/api/documents").get_json()["documents"] == []
 
 
-def test_a_failed_document_is_never_left_non_terminal(client):
+def test_a_document_is_never_left_non_terminal(client):
     """The property the UI depends on: polling must always stop."""
-    client.post("/api/documents", data={
-        "file": (io.BytesIO(b"%PDF-1.4 nonsense"), "broken.pdf"),
-    }, content_type="multipart/form-data")
+    _upload(client)
     _drain(client)
     statuses = {d["status"] for d in client.get("/api/documents").get_json()["documents"]}
     assert statuses.isdisjoint({"pending", "processing"})

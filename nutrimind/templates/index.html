@@ -87,7 +87,7 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce() }}">
 (async function () {
   const el = document.getElementById("home-activity");
   try {

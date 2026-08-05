@@ -9,7 +9,7 @@ Response conventions (used by every API blueprint):
 
 from __future__ import annotations
 
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_login import current_user
 
 
@@ -37,6 +37,20 @@ def current_user_id() -> int:
     return int(current_user.id)
 
 
+
+def current_user_today():
+    """The calendar date it is *for this user*, not in UTC.
+
+    Every daily aggregate goes through here. Before it existed, "today" was the
+    UTC day, so a user in India saw the dashboard reset at 05:30 local and an
+    evening meal logged after 17:30 landed on tomorrow.
+    """
+    from nutrimind.models import UserProfile
+    from nutrimind.utils.time import local_today
+
+    profile = UserProfile.for_user(current_user_id())
+    return local_today(profile.timezone if profile else None)
+
 def register_blueprints(app: Flask, csrf) -> None:
     """Register all blueprints.
 
@@ -48,6 +62,7 @@ def register_blueprints(app: Flask, csrf) -> None:
     ``/api/health`` is exempt because uptime monitors cannot fetch a token, and
     it is a read-only liveness probe with nothing to forge.
     """
+    from nutrimind.routes.account_api import account_api
     from nutrimind.routes.auth import auth
     from nutrimind.routes.chat_api import chat_api
     from nutrimind.routes.dashboard_api import dashboard_api
@@ -61,7 +76,45 @@ def register_blueprints(app: Flask, csrf) -> None:
     app.register_blueprint(auth)
     app.register_blueprint(health)
     for blueprint in (profile_api, meals_api, dashboard_api, system_api,
-                      chat_api, knowledge_api):
+                      chat_api, knowledge_api, account_api):
         app.register_blueprint(blueprint)
 
     csrf.exempt(health)
+
+
+#: Largest page a client may request. Bounds one response; the caller pages for
+#: more. Without a ceiling, ``?limit=1000000`` is a cheap way to make the server
+#: build an enormous response.
+MAX_PAGE_SIZE = 200
+
+
+def page_params(default_limit: int = 50) -> tuple[int, int]:
+    """``(limit, offset)`` from the query string, clamped to something sane.
+
+    Added because the list endpoints used fixed ``limit(50)`` and ``limit(300)``
+    with no way to reach anything older: a user with 301 chat sessions simply
+    could not see the oldest, and nothing told them so. Hard truncation is worse
+    than paging because it is silent.
+    """
+    from nutrimind.utils.validators import validate_range
+
+    limit = int(validate_range(request.args.get("limit", default_limit),
+                               "limit", 1, MAX_PAGE_SIZE))
+    offset = int(validate_range(request.args.get("offset", 0),
+                                "offset", 0, 1_000_000))
+    return limit, offset
+
+
+def paged(items: list, total: int, limit: int, offset: int) -> dict:
+    """Envelope carrying enough for a client to know there is more.
+
+    ``has_more`` rather than a page count: the caller almost always wants "is
+    there a next page", and computing it from ``total`` at every call site is
+    how off-by-one paging bugs happen.
+    """
+    return {
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "has_more": offset + len(items) < total,
+    }

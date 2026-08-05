@@ -24,6 +24,7 @@ from typing import Iterator
 from nutrimind.agents.base_agent import AgentRequest, Event, status, token
 from nutrimind.agents.tools import parse_llm_json
 from nutrimind.prompts import load_prompt
+from nutrimind.utils.redaction import summarize
 
 logger = logging.getLogger(__name__)
 
@@ -106,8 +107,8 @@ class Coordinator:
     def route(self, message: str, llm) -> RoutingDecision:
         decision = apply_rules(message)
         if decision:
-            logger.info("routing[rules] '%s' -> %s (%s)",
-                        message[:50], decision.agent, decision.intent)
+            logger.info("routing[rules] %s -> %s (%s)",
+                        summarize(message), decision.agent, decision.intent)
             return decision
 
         if llm.mode == "demo":  # demo backend cannot classify arbitrary text
@@ -132,7 +133,7 @@ class Coordinator:
                 agent=agent,
                 reason=str(data.get("reason", "Classified by IBM Granite."))[:200],
                 method="llm")
-            logger.info("routing[llm] '%s' -> %s", message[:50], decision.agent)
+            logger.info("routing[llm] %s -> %s", summarize(message), decision.agent)
             return decision
         except Exception as exc:  # noqa: BLE001 — routing must never fail hard
             logger.warning("LLM routing failed (%s); using default", exc)

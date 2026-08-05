@@ -274,8 +274,20 @@ it was not chosen for.
   single process (see "Production process model"), the configured limit is the
   effective limit — but it is also lost on restart, so put real limits at the
   proxy (nginx `limit_req`) for public exposure.
-- Security headers (CSP, HSTS) and Subresource Integrity on the CDN assets are
-  still outstanding — tracked as the security-hardening milestone.
+- Security headers are set by the application: CSP with a per-request nonce (no
+  `'unsafe-inline'` in `script-src`), HSTS over HTTPS, `X-Frame-Options`,
+  `Referrer-Policy`, `Permissions-Policy`, `X-Content-Type-Options`, COOP and
+  CORP. Verified by `tests/unit/test_security_headers.py`.
+- **Run `python scripts/vendor_cdn_assets.py` before exposing an instance
+  publicly.** By default Bootstrap, `marked` and DOMPurify load from a CDN.
+  DOMPurify is the sanitiser applied to model output, so its integrity matters:
+  vendoring copies all of them locally, after which the CSP allows no external
+  origin at all.
+- Retrieved passages are fenced as untrusted data and the agent prompts state
+  that a document cannot issue instructions. This is mitigation, not a
+  guarantee — see SECURITY.md.
+- Logs contain no user message content, search queries or email addresses; they
+  carry a salted per-process fingerprint and a length instead.
 
 ## Database migrations
 

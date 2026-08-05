@@ -11,6 +11,15 @@ services:
     build: .
     image: nutrimind:latest
     restart: unless-stopped
+    # Docker's json-file driver is unbounded by default. The application's own
+    # RotatingFileHandler is capped at 1 MB x 3, but that is not the copy that
+    # grows: everything on stdout is also captured here, and without these two
+    # options it accumulates on the host until the disk fills.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     env_file: .env
     environment:
       # Behind Caddy, so the client's address arrives in X-Forwarded-For. Left
@@ -41,6 +50,11 @@ services:
   caddy:
     image: caddy:2.10-alpine
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     depends_on:
       - app
     ports:

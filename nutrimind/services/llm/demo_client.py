@@ -47,9 +47,19 @@ _GROUNDED_FOOTER = (
 )
 
 #: Matches one entry of ``RetrievalResult.context_text()``:
-#: ``[1] (from guide.pdf, page 4)\n<passage text>``
+#:
+#:     <<<PASSAGE 1 source="guide.pdf" page="4"
+#:     passage text
+#:     PASSAGE>>>
+#:
+#: The fence replaced a bare ``[1] (from guide.pdf, page 4)`` heading when
+#: retrieved passages were delimited as untrusted data. This parser has to track
+#: that format: if it silently stops matching, ``parse_passages`` returns nothing,
+#: the demo backend falls through to its scripted keyword table, and grounded
+#: answers go back to being unrelated canned text carrying real citations —
+#: the exact defect fixed in Milestone 4.
 _PASSAGE_ENTRY = re.compile(
-    r"\[(\d+)\] \(from (.+?), page (\d+)\)\n(.*?)(?=\n\[\d+\] \(from |\Z)",
+    r'<<<PASSAGE (\d+) source="(.*?)" page="(\d+)"\n(.*?)\nPASSAGE>>>',
     re.DOTALL)
 
 #: The agents append the user's question after the passages under one of these.

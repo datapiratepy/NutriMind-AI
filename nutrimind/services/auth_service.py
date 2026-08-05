@@ -14,6 +14,7 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from nutrimind.exceptions import ValidationError
 from nutrimind.extensions import db
 from nutrimind.models import User
+from nutrimind.utils.redaction import redact_email
 from nutrimind.utils.time import utcnow
 from nutrimind.utils.validators import sanitize_text
 
@@ -106,7 +107,7 @@ def authenticate(email: str, password: str) -> User:
     """
     user = User.by_email(email or "")
     if user is None or not user.check_password(password or ""):
-        logger.info("failed login for %r", User.normalize_email(email or "")[:80])
+        logger.info("failed login for %s", redact_email(User.normalize_email(email or "")))
         raise AuthError()
     if not user.is_active:
         logger.warning("login attempt on disabled account user_id=%s", user.id)

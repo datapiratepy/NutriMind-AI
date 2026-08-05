@@ -86,6 +86,28 @@ def validate_string_list(value: Any, field: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 #: field -> (validator callable taking the raw value, required flag)
+
+def validate_timezone(value) -> str:
+    """Accept only a real IANA zone name.
+
+    Checked against the interpreter's own zone database rather than a regex:
+    the value decides which calendar day every aggregate falls into, so a
+    plausible-looking typo would silently shift a user's dashboard by hours.
+    Rejecting at the boundary keeps ``local_today`` free of surprises — it still
+    falls back to UTC defensively, but nothing valid should ever reach that path.
+    """
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+    name = sanitize_text(value, max_chars=64, field="timezone")
+    try:
+        ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError, KeyError):
+        raise ValidationError(
+            f"'{name}' is not a known time zone.",
+            hint="Use an IANA name such as 'Asia/Kolkata' or 'Europe/London'."
+        ) from None
+    return name
+
 def validate_profile_payload(data: dict, *, partial: bool = False) -> dict:
     """Validate a profile create/update payload; returns cleaned values only.
 
@@ -107,12 +129,13 @@ def validate_profile_payload(data: dict, *, partial: bool = False) -> dict:
         "medical_conditions": lambda v: validate_string_list(v, "medical_conditions"),
         "allergies": lambda v: validate_string_list(v, "allergies"),
         "country": lambda v: sanitize_text(v, max_chars=LIST_ITEM_MAX_CHARS, field="country"),
+        "timezone": validate_timezone,
         "daily_calorie_goal": lambda v: int(validate_range(v, "daily_calorie_goal",
                                                            *CALORIE_GOAL_RANGE)),
     }
     required = ("name", "age", "gender", "height_cm", "weight_kg",
                 "activity_level", "food_preference", "weight_goal")
-    optional_nullable = ("country", "daily_calorie_goal")
+    optional_nullable = ("country", "timezone", "daily_calorie_goal")
 
     cleaned: dict = {}
     for field, rule in rules.items():

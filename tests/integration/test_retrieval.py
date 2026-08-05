@@ -98,5 +98,6 @@ def test_context_text_numbers_passages(store):
     result = Retriever(store, top_k=3, similarity_threshold=0.0).retrieve(
         "potassium protein")
     context = result.context_text()
-    assert context.startswith("[1] (from sample.pdf, page")
-    assert "[2]" in context
+    assert context.startswith('<<<PASSAGE 1 source="sample.pdf" page=')
+    assert "<<<PASSAGE 2 " in context
+    assert "PASSAGE>>>" in context
