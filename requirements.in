@@ -15,7 +15,7 @@
 flask>=3.0
 flask-sqlalchemy>=3.1
 flask-wtf>=1.2
-python-dotenv>=1.0
+python-dotenv>=1.2.3
 
 # Session-cookie authentication.
 flask-login>=0.6
@@ -56,11 +56,11 @@ psycopg[binary]>=3.2
 # The floor is >=1.6 so the resolver cannot pick a release that silently
 # narrows the supported interpreter range. Re-check this bound before changing
 # the Python version in CI or the deployment image.
-ibm-watsonx-ai>=1.6
+ibm-watsonx-ai>=1.6.3
 
 # RAG
 chromadb>=0.5
-pypdf>=4.0
+pypdf>=6.16.1
 
 # PDF export
 reportlab>=4.0
