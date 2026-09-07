@@ -15,7 +15,7 @@
 flask>=3.0
 flask-sqlalchemy>=3.1
 flask-wtf>=1.2
-python-dotenv>=1.0
+python-dotenv>=1.2.3
 
 # Session-cookie authentication.
 flask-login>=0.6
@@ -43,7 +43,7 @@ flask-migrate>=4.1
 # extra so the Postgres code path is always installed and testable; SQLite
 # remains the development default and nothing imports this unless
 # DATABASE_URI points at Postgres.
-psycopg[binary]>=3.2
+psycopg[binary]>=3.3.5
 
 # IBM watsonx.ai
 #
@@ -56,11 +56,11 @@ psycopg[binary]>=3.2
 # The floor is >=1.6 so the resolver cannot pick a release that silently
 # narrows the supported interpreter range. Re-check this bound before changing
 # the Python version in CI or the deployment image.
-ibm-watsonx-ai>=1.6
+ibm-watsonx-ai>=1.7.1
 
 # RAG
 chromadb>=0.5
-pypdf>=4.0
+pypdf>=6.17.0
 
 # PDF export
 reportlab>=4.0
