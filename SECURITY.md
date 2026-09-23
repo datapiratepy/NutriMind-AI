@@ -88,11 +88,12 @@ documents, so this is self-injection. It becomes a real cross-user issue if a
 shared knowledge base is ever added, and that feature must not ship before this
 is revisited.
 
-**Third-party assets.** Bootstrap, `marked` and DOMPurify load from a CDN by
-default. `scripts/vendor_cdn_assets.py` copies them locally, after which no
-external origin is allowed at all. **Run it before exposing an instance
-publicly** — DOMPurify is the sanitiser applied to model output, and by default
-it arrives over the network from a third party.
+**Third-party assets.** Bootstrap, `marked` and DOMPurify are vendored into
+`nutrimind/static/vendor/` and committed (hashes in `MANIFEST.txt`), so the app
+serves them itself and the CSP allows no external origin. If that directory is
+removed, the templates fall back to the CDN and the CSP re-admits it; run
+`scripts/vendor_cdn_assets.py` to restore it before exposing an instance
+publicly — DOMPurify is the sanitiser applied to model output.
 
 **No error tracking or alerting.** Failures are logged; nobody is notified.
 

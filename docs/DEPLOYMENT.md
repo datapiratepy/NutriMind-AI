@@ -278,11 +278,11 @@ it was not chosen for.
   `'unsafe-inline'` in `script-src`), HSTS over HTTPS, `X-Frame-Options`,
   `Referrer-Policy`, `Permissions-Policy`, `X-Content-Type-Options`, COOP and
   CORP. Verified by `tests/unit/test_security_headers.py`.
-- **Run `python scripts/vendor_cdn_assets.py` before exposing an instance
-  publicly.** By default Bootstrap, `marked` and DOMPurify load from a CDN.
+- Third-party UI assets (Bootstrap, `marked`, DOMPurify) are vendored in
+  `nutrimind/static/vendor/` and committed, so the CSP allows no external origin.
   DOMPurify is the sanitiser applied to model output, so its integrity matters:
-  vendoring copies all of them locally, after which the CSP allows no external
-  origin at all.
+  if that directory is ever removed the app falls back to the CDN, and
+  `python scripts/vendor_cdn_assets.py` restores it.
 - Retrieved passages are fenced as untrusted data and the agent prompts state
   that a document cannot issue instructions. This is mitigation, not a
   guarantee — see SECURITY.md.

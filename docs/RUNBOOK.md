@@ -233,8 +233,6 @@ Honest list, so nobody assumes otherwise:
 
 - **No error tracking or uptime monitoring.** A 500 is a line in a log file on
   this box. Next milestone.
-- **No security headers (CSP, HSTS beyond Caddy's default, SRI).** Next
-  milestone; CSP needs Report-Only observation against the real origin first.
 - **Password reset emails are written to the log**, not sent. An operator can
   retrieve the link with `docker compose logs app | grep reset`.
 - **Backups are local.** Copying them off-host is a manual step you must add.
